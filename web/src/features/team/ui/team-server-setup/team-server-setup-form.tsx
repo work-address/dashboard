@@ -101,7 +101,12 @@ export const TeamServerSetupForm = ({
         <Notice>
           {[
             status === 'experimental'
-              ? t('agents.support.experimentalHint', { product: productName })
+              ? serverVersions(product).length > 0
+                ? t('agents.support.checkedHint', {
+                    product: productName,
+                    versions: serverVersions(product).join(', '),
+                  })
+                : t('agents.support.experimentalHint', { product: productName })
               : null,
             ...limits,
           ]

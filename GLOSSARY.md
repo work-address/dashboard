@@ -25,7 +25,7 @@ The people on a project's lists and the agents they run, as the `/team` page sho
 _Avoid_: Organisation, workspace
 
 **Server agent**:
-An agent of a worker's that runs on a server rather than their laptop, and uploads with its own credential limited to one agent on one project.
+An agent of a worker's that runs on a server rather than their laptop, and uploads agent runs only, with its own credential for that machine.
 _Avoid_: Project agent, hosted agent
 
 **Attachment**:

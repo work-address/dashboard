@@ -1,13 +1,19 @@
 # Work Address OpenClaw adapter
 
-Prototype, **partial coverage**, fixed-project mode. Source stays in the Work Address
-monorepo; this directory is published to npm as
-`@work-address/agent-tracker-openclaw`.
+**Experimental** on servers, **partial coverage**, fixed-project mode. OpenClaw is not
+recorded on a computer. Source stays in the Work Address monorepo; this directory is
+published to npm as `@work-address/agent-tracker-openclaw` by the tag
+`agent-tracker-v<version>` (npm still has 0.1.1; 0.2.0, which this README describes,
+is not yet published).
 
 ## What works
 
-- Observes trusted `run.started` / `run.completed` diagnostics from OpenClaw **2026.10.4**.
+- Observes trusted `run.started` / `run.completed` diagnostics from OpenClaw **2026.10.4**,
+  and `model.call.error` only to tell an aborted run.
 - Maps completion, abort, blocked and error outcomes into the shared event contract.
+  An aborted run is recorded as cancelled (2026.10.4 reports a run whose model call
+  was aborted as `error`). A model error is recorded as a completed run, as OpenClaw
+  reports it.
 - Keeps source timestamps and reported durations; never invents an end after a crash.
 - Hashes run identities; uses a stable per-run session namespace instead of exporting
   session keys, addresses, paths or user-supplied labels.
@@ -15,11 +21,11 @@ monorepo; this directory is published to npm as
   every 30 seconds while the gateway service is running, with retries and backoff.
 - Ignores inner harness/model/tool streams, so they cannot duplicate the outer run.
 - Subscribes through the SDK's metadata-only `onInternalDiagnosticEvent`, with a
-  two-event filter and a `metadata.trusted` check. The public `onDiagnosticEvent`
+  three-event filter and a `metadata.trusted` check. The public `onDiagnosticEvent`
   excludes trusted core events in this version and is unsuitable for this collector.
 
 The adapter never controls an agent, requests approval privileges, changes a prompt,
-reads a transcript or turns on diagnostics. Diagnostics must already be enabled.
+sends a prompt, reads a transcript or turns on diagnostics. Diagnostics must already be enabled.
 An unsupported version or failed collector leaves agent execution alone and reports
 one generic warning per minute. Inspect the queue with `agent-tracker status`.
 
@@ -115,14 +121,15 @@ unsent events until you explicitly choose to remove that dedicated directory.
 ## Connect to Work Address
 
 The API issues collector credentials and ingests, deduplicates and bills these runs.
-Every minute is billed as unclassified until this adapter is qualified.
+Every minute is billed as unclassified for now.
 
 1. Install the collector and this plugin on the gateway host with
    `npm install -g @work-address/agent-tracker @work-address/agent-tracker-openclaw`.
    That puts `agent-tracker` on the PATH.
 2. On the web Team page, choose **Add a server agent**, pick OpenClaw, the project and
    a rate. The project needs **Record AI agents** on, or its runs are refused. The
-   page shows the credential once, and a setup command.
+   page shows OpenClaw's status and known limits, the credential once, the install
+   command from step 1, a setup command and a link to this guide.
 3. Set `WORK_ADDRESS_STATE_DIR` to a new absolute private directory. Copy the
    credential first, then run the command the page shows, as it is:
 
@@ -142,17 +149,20 @@ page and set the collector up in a new directory.
 
 ## Qualification boundary
 
-See `compatibility.json` and the fixture's provenance. Current tests use synthetic
-inputs and the pinned SDK dispatcher, not captured real runs. Missing end events
+See `compatibility.json` and the fixture's provenance. The live check of 2026-11-14
+passed on OpenClaw 2026.10.4 (success, failure, interruption, two runs at once) with
+the model emulated by `packages/agent-tracker/scripts/mock-model.mjs` and the gateway and plugin real; its
+events are kept in `packages/agent-tracker/test/live/openclaw/2026.10.4/` and CI
+replays them. OpenClaw stays Experimental until the collector and this plugin at
+0.2.0 are published to npm. Missing end events
 remain incomplete; no replay, human-wait detection, token counts, tool summaries,
 subagent lineage or cross-collector deduplication is claimed. Do not run this alongside
 another collector for the same work and assume the result is invoice-ready.
 
-Before production: qualify real completion, interruption, crash, concurrent and child
-runs on supported hosts and measure enqueue latency. The server must register adapter
+Still to qualify: crash and child runs, other host OSes, and enqueue latency. The server must register adapter
 capabilities itself; client capability flags are never billing authority.
 
-This prototype is intentionally independent of the Qt desktop collector and existing
+This adapter is intentionally independent of the Qt desktop collector and existing
 human time/invoice behavior. It adds no hooks or services to the user's machine by itself.
 
 Sources used for this adapter:

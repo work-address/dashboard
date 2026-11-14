@@ -192,8 +192,9 @@ the product, where it ran (a computer or a server), how it ended, the source's
 session and run ids, and the prompt that started the run, up to 4,000
 characters, so the owner sees what the billed time was asked to do. Tokens,
 model, tools and commits are not collected yet. The AI agents page shows all of
-it, run by run. The worker can keep prompts on their machine; response text is
-never sent.
+it, run by run. On a server the worker can keep prompts on the machine, and
+OpenClaw sends none; the desktop app always sends Claude Code's, and Codex runs
+read there carry none. Response text is never sent.
 
 **A worker can erase a run's prompt until the run is invoiced.** It goes for
 everyone and leaves no trace, the same as a removed screenshot, while the run
@@ -220,10 +221,10 @@ removes can no longer invoice, and neither can their agents.
 
 **Agents hold no access of their own.** An agent cannot sign in. Runs arrive
 through a write-only credential the worker issues for each machine, which opens
-no other route. A server agent's credential sends for one agent on one project,
-because the secret may sit on a machine the worker does not fully control. A
-desktop app's credential covers the worker's account, because one laptop tracks
-several projects.
+no other route. A server agent's credential sends agent runs only, for one
+machine, and cannot drive the timer; the project and agent it reports come from
+the collector's own setup, not from the credential. A desktop app's credential
+covers the worker's account, because one laptop tracks several projects.
 
 **The Team page is where this is seen and set.** `/team` lists, by project,
 everyone on the project's lists and the agents they run, and a worker sets their

@@ -734,6 +734,7 @@
   "agents.support.experimental": "Экспериментально",
   "agents.support.none": "Не записывается",
   "agents.support.experimentalHint": "Ещё не проверено на настоящем релизе {{product}}: проверьте первые запуски.",
+  "agents.support.checkedHint": "Проверено на {{product}} {{versions}}; экспериментально, пока не опубликован коллектор, прошедший проверку. Проверьте первые запуски.",
   "agents.support.limit.no-waits": "Время ожидания человека или инструмента считается работой.",
   "agents.support.limit.stop-provisional": "Запуск, который завершился нормально, остаётся неподтверждённым: агент может продолжить.",
   "agents.support.limit.root-turns-only": "Записывается только основной агент, без его субагентов.",

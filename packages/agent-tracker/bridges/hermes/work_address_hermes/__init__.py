@@ -73,8 +73,9 @@ def _observe(name, **kwargs):
 
 @atexit.register
 def _interrupted_at_exit():
-    """Ctrl+C on a one-shot `hermes -z` exits inside the turn without
-    on_session_end: a turn still open when Hermes exits was interrupted."""
+    """A turn still open when Python exits normally was interrupted. This does
+    not cover a one-shot `hermes -z` stopped with Ctrl+C: Hermes 2026.9.24
+    leaves through os._exit there, which skips exit handlers."""
     for (session_id, turn_id), schema in list(_open.items()):
         _observe("on_session_end", telemetry_schema_version=schema, session_id=session_id,
                  turn_id=turn_id, completed=False, failed=False, interrupted=True)

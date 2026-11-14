@@ -715,6 +715,7 @@
   "agents.support.experimental": "試験運用",
   "agents.support.none": "記録されません",
   "agents.support.experimentalHint": "{{product}} の実際のリリースでまだ確認されていません。最初の実行を確認してください。",
+  "agents.support.checkedHint": "{{product}} {{versions}} で確認済み。確認に合格したコレクターが公開されるまでは試験運用です。最初の実行を確認してください。",
   "agents.support.limit.no-waits": "人やツールを待っている時間も実行中として数えられます。",
   "agents.support.limit.stop-provisional": "正常に終わった実行は、エージェントが続ける可能性があるため未確定のままです。",
   "agents.support.limit.root-turns-only": "記録されるのはメインのエージェントだけで、サブエージェントは記録されません。",

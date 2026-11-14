@@ -9,11 +9,11 @@ Reference for [agent-time-tracking.md](agent-time-tracking.md): what each AI age
 - **Reported:** stated by a third party (for example a competitor's release notes).
 - **Unverified:** expected but not yet confirmed; Phase 0 must check it.
 
-Nothing here has been qualified by our own conformance tests yet.
+The tables below are research; nothing in them was qualified by our own conformance tests. Since then (as of 15 November 2026): the desktop app reads Claude Code (from 2.1.286) and Codex (from 0.162.0) from their local logs, and the server collector's live checks, with the model emulated and the agent and its hooks or plugin real, passed on Claude Code 2.1.211, Codex 0.169.0, Kimi Code 0.38.0 and 2.6.2 and OpenClaw 2026.10.4; Hermes Agent 2026.9.24 failed the interruption check. Every agent is still Experimental on servers. Current status: `packages/agent-tracking-contract/src/support.ts` and [SERVER-RUNTIMES.md](../packages/agent-tracker/SERVER-RUNTIMES.md).
 
 ## 1. Coding tools on the worker's machine
 
-Read by the Qt log reader on laptops (timer mode). H = hooks, L = local records.
+Read by the Qt log reader on laptops (timer mode); as of 15 November 2026 it reads Claude Code and Codex, and the other tools are not recorded on a computer. H = hooks, L = local records.
 
 | Tool | Local records | Hooks | Run timing | Tokens and cost | Model | Interruptions and errors | Waits for a person | Subagents | Richer source | Verified |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -37,11 +37,12 @@ Read by the npm collector in fixed mode, through plugins, observers or hooks; th
 
 | Runtime | Integration route | Run boundaries | Tokens | Model | Waits for a person | Subagents and nesting | Project attribution | Limits | Verified |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **OpenClaw** | Typed plugin observers and diagnostic subscriptions; OTLP spans | `agent_end`; diagnostics `harness.run.started` / `completed` / `error`; spans `openclaw.run`, `openclaw.harness.run` | Model-call telemetry, not uniform across embedded and external harnesses | From model spans | Universal human-wait boundaries not established | Child hooks name the child differently at spawn and end; runs it launches in Codex or Claude Code are seen twice and billed once, under OpenClaw | Not in default OTLP export (session keys omitted); set at collector setup or `WORK_ADDRESS_PROJECT` | A trigger labelled `user` need not be a human; don't request approval-control privileges to measure time | Docs |
-| **Hermes Agent** | Python observer plugin, contract `hermes.observer.v1`, through a pip shim that hands events to the npm collector | `pre_llm_call` to `on_session_end`, which, despite its name, ends each turn, including failure and interruption | API events; fields unverified | API events | `on_human_input_request` / `resolved` with request identity | Subagent events; child stop callbacks can arrive late | Setup or `WORK_ADDRESS_PROJECT` | Turn start comes after context compression; plugins need explicit enablement | Docs |
+| **OpenClaw** | Typed plugin observers and diagnostic subscriptions; OTLP spans | `agent_end`; diagnostics `harness.run.started` / `completed` / `error`; spans `openclaw.run`, `openclaw.harness.run` | Model-call telemetry, not uniform across embedded and external harnesses | From model spans | Universal human-wait boundaries not established | Child hooks name the child differently at spawn and end; runs it launches in Codex or Claude Code are seen twice and billed once, under OpenClaw | Not in default OTLP export (session keys omitted); set at collector setup or `WORK_ADDRESS_PROJECT` | A trigger labelled `user` need not be a human; don't request approval-control privileges to measure time | Docs; live check on 2026.10.4 |
+| **Hermes Agent** | Python observer plugin, contract `hermes.observer.v1`: our pip plugin `work-address-hermes`, which hands events to the npm collector | `pre_llm_call` to `on_session_end`, which, despite its name, ends each turn, including failure and interruption; but a one-shot `hermes -z` stopped with Ctrl+C exits before any hook (live check, 14 Nov 2026) | API events; fields unverified | API events | `on_human_input_request` / `resolved` with request identity | Subagent events; child stop callbacks can arrive late | Setup or `WORK_ADDRESS_PROJECT` | Turn start comes after context compression; plugins need explicit enablement | Docs; live check on 2026.9.24, interruption failed |
 | **Claude Cowork** | Plugin hooks in its cloud execution environment, uploading over authenticated HTTPS | Plugin hooks (schemas may differ from Claude Code) | Unverified | Unverified | Unverified | Unverified | Sandbox credential | Organisation-level OTel is out of scope; manual timer if hooks don't qualify | Docs |
-| **Claude Code, headless** (`claude -p`, CI, cron) | Hooks plus the transcript at Stop; plugin from our marketplace | Hooks | Transcript at Stop | Transcript | Hooks | Hooks | Setup or `WORK_ADDRESS_PROJECT` | In `-p` mode async hooks die at teardown; cloud VMs are reclaimed, so flush at Stop | Docs |
-| **Codex, headless** (`codex exec --json`, CI) | Hooks, or the JSONL event stream of a run we launch | `turn.started` / `turn.completed` / `turn.failed` | Transcript at Stop | Transcript | Hooks | Hooks | Setup or `WORK_ADDRESS_PROJECT` | A launched run's stream needs a durable run ID; timeouts kill the hook's process group | Docs |
+| **Claude Code, headless** (`claude -p`, CI, cron) | Hooks, from our hook file merged into its settings; the transcript at Stop (not read yet) | Hooks | Transcript at Stop | Transcript | Hooks | Hooks | Setup or `WORK_ADDRESS_PROJECT` | In `-p` mode async hooks die at teardown; cloud VMs are reclaimed, so flush at Stop | Docs; live check on 2.1.211 |
+| **Codex, headless** (`codex exec --json`, CI) | Hooks, or the JSONL event stream of a run we launch | `turn.started` / `turn.completed` / `turn.failed` | Transcript at Stop | Transcript | Hooks | Hooks | Setup or `WORK_ADDRESS_PROJECT` | A launched run's stream needs a durable run ID; timeouts kill the hook's process group | Docs; hooks live-checked on 0.169.0 |
+| **Kimi Code, hooks** | Hooks in `~/.kimi-code/config.toml`; turn ends read from its session store, since 2.x fires no Stop | `TurnStarted` of user and task turns (system-triggered turns left out) to `turn.ended`; `StopFailure`, `Interrupt` | Session store `usage.record` (not read yet) | Session store (not read yet) | Not recorded | Not recorded | Setup or `WORK_ADDRESS_PROJECT` | In CI, run `agent-tracker sync` after Kimi exits | Docs; live check on 0.38.0 and 2.6.2 |
 | **Kimi Code Server API** | Experimental REST and WebSocket API (`/api/v1/ws`) | Turn events | Unverified | Unverified | Approval and question events | Subagent events | Setup | Replay by `{seq, epoch}`, 1,000-event buffer; some reads resume a cold session, so never start work just to track it | Docs |
 | **Legacy Kimi CLI** | Wire JSON-RPC transport | `TurnBegin` / `TurnEnd` | Unverified | Unverified | Unverified | Nested subagent events | Setup | Archived codebase; separate adapter | Docs |
 | **OpenCode server** | JS/TS plugin | Plugin status events | Unverified | Unverified | Permission events | — | Setup | Payload and replay to qualify | Docs |
@@ -139,8 +140,9 @@ Hooks are better only for real-time delivery, live permission waits and session 
 - **What it uploads:** agent time and daily token counts by model; the front app per active minute; optionally the front-tab site for chosen sites and browsers. It says it never records window titles, file names, keystrokes or screen content.
 - **Where:** Supabase Postgres in the US, sign-in through Clerk.
 - **How it compares:**
-  - **Same:** both read token counts from local logs.
-  - **Different:** we send the prompt that started each run (the worker can turn it off); it stores no prompts.
+  - **Same:** both read agent runs from local logs.
+  - **Different:** it uploads daily token counts; we do not collect tokens yet.
+  - **Different:** we send the prompt that started each Claude Code run (Codex runs read on a computer carry none); it stores no prompts.
   - **Different:** we count one agent's overlapping runs once per project, and the desktop timer decides the project.
 
 Sources: [privacy policy](https://firstlight.sh/privacy), [release notes](https://github.com/serafimcloud/firstlight-releases/releases).

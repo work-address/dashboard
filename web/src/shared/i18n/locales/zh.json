@@ -715,6 +715,7 @@
   "agents.support.experimental": "实验性",
   "agents.support.none": "不记录",
   "agents.support.experimentalHint": "尚未在 {{product}} 的正式版本上验证：请检查它最初的几次运行。",
+  "agents.support.checkedHint": "已在 {{product}} {{versions}} 上验证；在通过验证的采集器发布之前仍为实验性。请检查它最初的几次运行。",
   "agents.support.limit.no-waits": "等待人或工具的时间也算作运行时间。",
   "agents.support.limit.stop-provisional": "正常结束的运行仍为未确认状态，因为智能体可能会继续。",
   "agents.support.limit.root-turns-only": "只记录主智能体，不记录其子智能体。",

@@ -720,6 +720,7 @@
   "agents.support.experimental": "Experimental",
   "agents.support.none": "Not recorded",
   "agents.support.experimentalHint": "Not yet checked against a live release of {{product}}: check its first runs.",
+  "agents.support.checkedHint": "Checked with {{product}} {{versions}}; Experimental until the collector that passed is published. Check its first runs.",
   "agents.support.limit.no-waits": "Time spent waiting on a person or a tool counts as running.",
   "agents.support.limit.stop-provisional": "A run that ends normally stays unconfirmed, because the agent may carry on.",
   "agents.support.limit.root-turns-only": "Only the main agent is recorded, not its subagents.",

@@ -5,7 +5,7 @@
  * (`schema/agent-support.json`).
  *
  * An agent is `available` in a place only when all four hold (app SPEC.md,
- * "Agent support"):
+ * "Every recorded agent is supported the same way"):
  * 1. what it installs is published (npm, PyPI);
  * 2. a live check on a named release of the agent passed: success, failure,
  *    interruption and two runs at once reached the API as runs, and the
@@ -76,7 +76,7 @@ export const AGENT_SUPPORT: AgentSupport[] = [
       status: 'experimental',
       versions: ['2.1.211'],
       prompts: true,
-      limits: ['stop-provisional'],
+      limits: ['no-waits', 'stop-provisional'],
       install: [COLLECTOR],
       guide: `${RUNTIMES}#claude-code-and-codex`,
     },
@@ -89,7 +89,7 @@ export const AGENT_SUPPORT: AgentSupport[] = [
       status: 'experimental',
       versions: ['0.169.0'],
       prompts: true,
-      limits: ['stop-provisional'],
+      limits: ['no-waits', 'stop-provisional'],
       install: [COLLECTOR],
       guide: `${RUNTIMES}#claude-code-and-codex`,
     },

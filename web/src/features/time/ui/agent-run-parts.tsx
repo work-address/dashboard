@@ -94,9 +94,15 @@ export const AgentSupportBadge = ({
           }),
         )
       : []
+  const versions = place === 'fixed' ? (agent?.servers.versions ?? []) : []
   const title = [
     status === 'experimental'
-      ? t('agents.support.experimentalHint', { product: name })
+      ? versions.length > 0
+        ? t('agents.support.checkedHint', {
+            product: name,
+            versions: versions.join(', '),
+          })
+        : t('agents.support.experimentalHint', { product: name })
       : null,
     ...limits,
   ]

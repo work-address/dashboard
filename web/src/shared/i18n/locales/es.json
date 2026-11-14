@@ -723,6 +723,7 @@
   "agents.support.experimental": "Experimental",
   "agents.support.none": "No se registra",
   "agents.support.experimentalHint": "Aún no se ha comprobado con una versión real de {{product}}: revisa sus primeras ejecuciones.",
+  "agents.support.checkedHint": "Comprobado con {{product}} {{versions}}; experimental hasta que se publique el recolector que pasó la comprobación. Revisa sus primeras ejecuciones.",
   "agents.support.limit.no-waits": "El tiempo de espera a una persona o a una herramienta cuenta como ejecución.",
   "agents.support.limit.stop-provisional": "Una ejecución que termina con normalidad queda sin confirmar, porque el agente puede continuar.",
   "agents.support.limit.root-turns-only": "Solo se registra el agente principal, no sus subagentes.",

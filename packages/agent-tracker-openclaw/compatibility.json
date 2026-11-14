@@ -3,18 +3,21 @@
   "runtimeVersion": "2026.10.4",
   "adapterVersion": "0.2.0",
   "mode": "fixed",
-  "status": "partial",
-  "verification": "Published npm SDK declarations and synthetic fixtures; live lifecycle qualification pending",
+  "status": "experimental",
+  "verification": "Published npm SDK declarations, synthetic fixtures, and a live check passed 2026-11-14 on 2026.10.4 with an emulated model (success, failure, interruption, two runs at once); fixtures in packages/agent-tracker/test/live/openclaw/2026.10.4 replayed in CI; Experimental until 0.2.0 is published to npm",
   "source": "openclaw/plugin-sdk/diagnostic-runtime:onInternalDiagnosticEvent (metadata only, trusted core events)",
   "events": [
     "run.started",
-    "run.completed"
+    "run.completed",
+    "model.call.error"
   ],
   "limitations": [
+    "Sends no prompt",
+    "A model error is reported by OpenClaw as a completed run",
     "No replay after an OpenClaw crash; a lost end event must remain incomplete",
     "No human-wait boundaries, token counts, tool usage or nested-agent correlation",
     "Harness-only streams ignored to avoid counting an outer run twice",
     "Run time is billed as unclassified; no desktop integration",
-    "No OS/runtime performance qualification yet"
+    "No crash, child-run, other-OS or performance qualification yet"
   ]
 }

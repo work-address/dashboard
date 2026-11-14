@@ -2,10 +2,14 @@
 
 Checked against `app/docs/agent-time-tracking.md` and `agent-data-sources.md` on
 2026-10-17. These are **experimental collector integrations**, not completed billing
-support. The production ingest API, normalization/accounting, wait subtraction,
-Windows qualification and live runtime qualification remain separate work. No
-runtime in this matrix has passed live qualification here. Tests use synthetic
-metadata fixtures derived from the linked contracts.
+support. The ingest API (`POST /agent-tracking/events`) is in place; wait
+subtraction and Windows qualification remain separate work. Since
+2026-11-14 the [live check](#live-check) has passed, with an emulated model, for
+Claude Code 2.1.211, Codex 0.169.0, Kimi Code 0.38.0 and 2.6.2 and OpenClaw
+2026.10.4; Hermes Agent 2026.9.24 failed interruption. All stay experimental until
+collector 0.2.0 is published to npm; Hermes Agent also needs an interruption
+recorded. Other tests use synthetic metadata fixtures
+derived from the linked contracts.
 
 Keep these packages in the app monorepo: they share the versioned contract, durable
 queue, tests and release checks. Hermes needs a small Python distribution; it does
@@ -15,12 +19,12 @@ Node collector rather than loading Node's SQLite module into Bun.
 | Runtime / transport | Implemented behavior | Qualification / remaining limitation |
 | --- | --- | --- |
 | OpenClaw | Separate pinned plugin: trusted diagnostic run start and terminal; a run whose model call was aborted is cancelled (2026.10.4 reports it as `error`) | Pinned to 2026.10.4, checked live on a gateway with an emulated model; host needs Node >=24.16 <25 or >=26.1. A model error is answered as a completed run, as OpenClaw reports it. No waits/replay/lineage |
-| Hermes Agent | Python `hermes_agent.plugins` entry point, `pre_llm_call` and `on_session_end`; outcome flags distinguish success/failure/interruption | Partial, observer v1 schema enforced; root turns only; start follows compression; ambiguous outcome stays unknown |
+| Hermes Agent | Python `hermes_agent.plugins` entry point, `pre_llm_call` (with the prompt, `user_message`), `on_session_end` and `api_request_error`; outcome flags distinguish success/failure/interruption; a non-retryable request error fails the turn | Partial, observer v1 schema enforced; root turns only; start follows compression; ambiguous outcome stays unknown. Live check on 2026.9.24 failed interruption: Ctrl+C on a one-shot `hermes -z` hard-exits before any hook |
 | Claude Code headless | Separate provisional records per `UserPromptSubmit`, provisional `Stop`, definitive `StopFailure`; `SessionEnd` inside a turn cancels it (Claude Code has no interrupt hook) | Checked live on 2.1.211 with an emulated model; successful Stop stays provisional because other hooks may continue |
 | Codex headless hooks | Native turn IDs, provisional `Stop`, `Interrupt` cancellation; `SessionEnd` inside a turn fails it (an API error sends nothing else) | Checked live on 0.169.0 with an emulated model; successful Stop stays provisional |
 | Codex `exec --json` | Live `thread.started`, `turn.started/completed/failed`; per-launch run identity; disconnect remains unknown | Partial; receipt-time measurement, no replay/native timestamps or wait accounting |
 | Current Kimi Code | `TurnStarted` of `user` and `task` turns (the prompt of a `user` turn; turn ids are numbers per session); system-triggered turns left out; `StopFailure` and `Interrupt`; the end of every turn read from Kimi's own session store (`turn.ended`), since 2.x fires no `Stop` | Checked live on 0.38.0 and 2.6.2 with an emulated model; no waits or child attribution; a headless `kimi -p` killed by a signal leaves its turn open |
-| Kimi Code Server API | Explicit unavailable registry entry; hook transport above is available | Installed `/openapi.json` and `/asyncapi.json` and replay/epoch fixtures required. Collector does not poll APIs that might resume work |
+| Kimi Code Server API | Explicit unavailable registry entry; hook transport above is experimental | Installed `/openapi.json` and `/asyncapi.json` and replay/epoch fixtures required. Collector does not poll APIs that might resume work |
 | OpenCode server | JS plugin forwards allowlisted status; busy/idle/error become running/unknown observations | Partial **observation only**, no qualified run boundaries and no billable elapsed-time claim; no replay/child attribution |
 | Claude Cowork | Explicit unavailable registry entry | Its cloud hook payload, executable deployment, credentials and delivery at VM teardown need qualification. Use the existing manual timer; Claude Code payloads are not assumed interchangeable |
 | Legacy Kimi CLI | Explicit unavailable registry entry, separate from current Kimi | Optional route needs negotiated Wire version and launched-session fixtures; not implemented |
@@ -56,8 +60,9 @@ export WORK_ADDRESS_EXPERIMENTAL_ADAPTERS=1
 export WORK_ADDRESS_RUNTIME_VERSION=your-runtime-version
 ```
 
-Each agent's own steps follow. The dashboard shows the same install line when a
-server agent is added.
+Each agent's own steps follow; OpenClaw's are in its plugin's
+[README](../agent-tracker-openclaw/README.md#connect-to-work-address). The
+dashboard shows the same install line when a server agent is added.
 
 ### Claude Code and Codex
 
@@ -117,11 +122,12 @@ Once it is published, `pip install work-address-hermes` does the same. It is
 published by pushing the tag `work-address-hermes-v<version>`
 (`.github/workflows/hermes-publish.yml`, PyPI trusted publishing);
 `scripts/publish-wizard.sh` walks through the PyPI and npm side the first time. Then add
-`work-address` to `plugins.enabled` in Hermes configuration. The pip entry point registers two callbacks accepting
+`work-address` to `plugins.enabled` in Hermes configuration. The pip entry point registers three callbacks accepting
 `**kwargs` and returning `None`; the bridge never returns context or directives.
 Set `WORK_ADDRESS_COLLECTOR_BIN` to an absolute collector executable if needed.
-Only session/turn/parent identity, schema version and three boolean outcome flags
-cross the Python-to-Node boundary. The subprocess has a five-second timeout
+Only session/turn/parent identity, schema version, boolean outcome flags
+(`completed`, `failed`, `interrupted`, `retryable`) and the prompt that starts a
+turn (unless `WORK_ADDRESS_PROMPTS=off`) cross the Python-to-Node boundary. The subprocess has a five-second timeout
 (`WORK_ADDRESS_BRIDGE_TIMEOUT`, in seconds, up to 60) and no network operation. Bridge failure emits one generic warning per Python process;
 loss before reaching SQLite cannot be counted durably and requires host-log
 monitoring. Collector failures after queue opening increment `status.lost`.
@@ -202,7 +208,7 @@ up both registries' trust the first time and pushes the tags.
 ## Live check
 
 An agent becomes "Available" on servers when all four hold (app `SPEC.md`,
-"Agent support"): what it installs is published; this live check passed on a
+"A worker's agents are the worker's"): what it installs is published; this live check passed on a
 named release of the agent; the dashboard shows its own install steps; and an API
 test uses its product id. Then set its `servers.status` to `available` and add
 the release to `servers.versions` in `agent-tracking-contract/src/support.ts`,
@@ -270,11 +276,12 @@ covers privacy allowlists, terminal ordering, continuation, restart correlation,
 duplicate callbacks, unknown schema, failure/interruption, child suppression,
 truncated streams and fail-open behavior. Live success/failure/interruption/wait,
 concurrency, teardown and offline recovery fixtures per runtime/version/OS are
-still release gates. The `time-tracker` repository is unchanged: these server paths
-use no Qt runtime, and desktop log readers are a separate implementation phase.
+still release gates. These server paths use no Qt runtime; on a computer the
+desktop TimeTracker reads Claude Code and Codex from their local logs instead.
 
-Local validation: 54 Node tests and 2 Python tests pass, including both bridges
-calling the real Node collector. All npm tarballs install outside the workspace.
+Local validation (2026-10-18): 54 Node tests and 2 Python tests passed, including
+both bridges calling the real Node collector; the suites have grown since (the
+Hermes bridge has 5 Python tests). All npm tarballs install outside the workspace.
 Python wheel construction is included in CI but could not be verified locally:
 the host Python 3.14 pip fails while detecting the macOS version, before building
 the package. The Python callback/module path is tested; wheel installation remains

@@ -10,7 +10,7 @@ Each event is limited to 16 KiB; timestamps are ISO UTC and numeric durations ar
 nonnegative safe integers in milliseconds.
 
 This is the implemented subset of `docs/agent-time-tracking.md`, not the entire
-planned contract. Waits, content and manual entries are not accepted until their
+planned contract. Waits, other content and manual entries are not accepted until their
 semantics and tests are implemented. Capabilities describe the producer;
 a receiving server must check them against its own compatibility registry.
 
@@ -18,6 +18,13 @@ a receiving server must check them against its own compatibility registry.
 same Zod definition. The JSON Schema is exported as
 `@work-address/agent-tracking-contract/schema` for consumers such as the Qt reader.
 The package has no dependency on backend entities, UI or OpenClaw.
+
+`@work-address/agent-tracking-contract/support` exports `AGENT_SUPPORT` (`src/support.ts`):
+for each recorded agent, its status on a computer and on servers (`available`,
+`experimental` or `none`), the releases its live check passed on, whether it sends
+prompts, its known limits, its install lines and its setup guide. The dashboard,
+the collector and address.work read it; `pnpm build` also writes it to
+`schema/agent-support.json` (exported as `./support.json`), which the website copies.
 
 The experimental subset also includes `run.observed` with running/unknown state
 and lifecycle/runtime-state evidence. Hook/stream receipt timestamps explicitly

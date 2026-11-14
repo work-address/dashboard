@@ -122,6 +122,6 @@ export function register(api: PluginApi, sdkLoader = loadSdk): void {
 export default {
   id: 'work-address-agent-tracker',
   name: 'Work Address agent tracker',
-  description: 'Passive run telemetry with a durable local queue (prototype).',
+  description: 'Passive run telemetry with a durable local queue (experimental).',
   register,
 }

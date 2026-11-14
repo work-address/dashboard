@@ -1,7 +1,7 @@
 {
   "id": "work-address-agent-tracker",
   "name": "Work Address agent tracker",
-  "description": "Passive agent run tracking; prototype with partial coverage.",
+  "description": "Passive agent run tracking; experimental, with partial coverage.",
   "categories": ["developer-tools"],
   "activation": { "onStartup": true },
   "configSchema": {

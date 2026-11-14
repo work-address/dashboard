@@ -277,7 +277,8 @@ const PRODUCTS = ['claude-code', 'codex', 'openclaw', 'hermes', 'kimi-code']
 const SERVER_ONLY = new Set(['openclaw', 'hermes', 'kimi-code'])
 /** Its server collector sends no prompt (agent-tracking-contract support). */
 const NO_PROMPT = new Set(['openclaw'])
-const NO_WAITS = SERVER_ONLY
+// No collector records waits yet, on a computer or a server.
+const NO_WAITS = new Set(PRODUCTS)
 const PROMPTS = [
   'Fix the flaky login test and explain the race',
   'Add pagination to the invoices endpoint',
@@ -741,7 +742,7 @@ function makeRun(
         evidence: 'demo',
       },
       {
-        // These collectors record no waits: the pause shows as running.
+        // No collector records waits: the pause shows as running.
         state: NO_WAITS.has(product) ? 'running' : 'human_wait',
         fromAt: iso(start + running),
         toAt: iso(start + running + wait),
