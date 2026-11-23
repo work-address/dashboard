@@ -8,6 +8,7 @@ import {
   agentChartsKey,
   agentHoursOf,
   agentRunEndingsOf,
+  agentSeriesNames,
   agentStateHoursOf,
   getAgentChartsRange,
   type AgentRunEnding,
@@ -46,8 +47,6 @@ const ENDING_LABELS: Record<AgentRunEnding, string> = {
 
 type Props = {
   filters: AgentRunFilters
-  /** The reader's name for each agent they may see runs of. */
-  agentNames: Map<string, string>
 }
 
 /**
@@ -55,7 +54,7 @@ type Props = {
  * how those hours were spent, and how the runs ended. They follow the days,
  * project, person and agent the page is filtered to.
  */
-export const AgentsCharts = ({ filters, agentNames }: Props) => {
+export const AgentsCharts = ({ filters }: Props) => {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? i18n.language
 
@@ -82,16 +81,6 @@ export const AgentsCharts = ({ filters, agentNames }: Props) => {
     const range = getAgentChartsRange(filters)
     const grain = askGrain(range)
     const daily = data?.daily
-    // An agent the reader's team no longer lists still ran: it keeps a
-    // series, under the name the page has for such agents.
-    const named = new Map(agentNames)
-
-    for (const row of daily ?? []) {
-      if (!named.has(row.agentId)) {
-        named.set(row.agentId, t('agents.charts.unnamed'))
-      }
-    }
-
     const shared = { period: range, language }
 
     return {
@@ -99,14 +88,13 @@ export const AgentsCharts = ({ filters, agentNames }: Props) => {
       hours: periodBars({
         ...shared,
         sources: [{ rows: daily, grain, values: agentHoursOf }],
-        // By name, so an agent keeps its place and colour between periods.
+        // The names came with the rows, detached and removed agents' too.
         series: ranked(
-          [...named]
-            .map(([id, title]) => ({ id, title }))
-            .sort(
-              (a, b) =>
-                a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
-            ),
+          agentSeriesNames(
+            data?.agents ?? [],
+            data?.people ?? [],
+            t('agents.charts.unnamed'),
+          ),
           t('dashboard.charts.other'),
         ),
       }),
@@ -144,7 +132,7 @@ export const AgentsCharts = ({ filters, agentNames }: Props) => {
         })),
       }),
     }
-  }, [agentNames, data, filters, language, t])
+  }, [data, filters, language, t])
 
   const loading = pending && data === null
   const nothing =

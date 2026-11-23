@@ -19,6 +19,7 @@ export { agentWorkedSeconds } from './types'
 
 export type {
   StatisticsAgentDailyRow,
+  StatisticsAgentName,
   StatisticsAgentRunCount,
   StatisticsAgentRunDay,
   StatisticsAgents,
@@ -27,6 +28,7 @@ export type {
   StatisticsHourlyRow,
   StatisticsInsights,
   StatisticsOverview,
+  StatisticsPersonName,
   StatisticsProjectAppRow,
   StatisticsQuery,
   StatisticsTeamRow,

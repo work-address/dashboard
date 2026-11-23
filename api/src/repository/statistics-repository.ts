@@ -299,25 +299,6 @@ export class StatisticsRepository {
     return new Map(users.map((u) => [u.id, u.name || u.address]))
   }
 
-  /**
-   * What these workers call their agents, by `workerId/agentId`. A removed
-   * agent stays on its worker's list, so it keeps its name.
-   */
-  public async agentNames(userIds: string[]): Promise<Map<string, string>> {
-    if (!userIds.length) return new Map()
-    const workers = await getDataSource()
-      .getRepository(User)
-      .find({ where: { id: In(userIds) }, select: { id: true, agents: true } })
-    return new Map(
-      workers.flatMap((worker) =>
-        (worker.agents ?? []).map((agent): [string, string] => [
-          `${worker.id}/${agent.id}`,
-          agent.name,
-        ]),
-      ),
-    )
-  }
-
   public gaps(scope: StatisticsScope) {
     const q = this.visible(scope)
     const active =

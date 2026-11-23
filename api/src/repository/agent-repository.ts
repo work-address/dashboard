@@ -5,7 +5,7 @@ import {
   ForbiddenError,
   NotFoundError,
 } from 'routing-controllers'
-import { EntityManager } from 'typeorm'
+import { EntityManager, In } from 'typeorm'
 import { getDataSource } from '@/connector/data-source'
 import { User } from '@/entity/user'
 import { Project } from '@/entity/project'
@@ -22,6 +22,31 @@ import { Refused, WorkerAgents } from '@/service/worker-agents'
 @injectable()
 export class AgentRepository {
   @inject('ProjectAccess') private access: ProjectAccess
+
+  /**
+   * What these workers call their agents, by `workerId/agentId`: the one
+   * lookup behind every name of an agent - on a run, in statistics, on a
+   * shared report. A removed or detached agent stays on its worker's list,
+   * so it keeps its name; an id the list no longer holds has none.
+   */
+  public async names(
+    userIds: string[],
+    manager: EntityManager = getDataSource().manager,
+  ): Promise<Map<string, string>> {
+    if (!userIds.length) return new Map()
+    const workers = await manager.find(User, {
+      where: { id: In([...new Set(userIds)]) },
+      select: { id: true, agents: true },
+    })
+    return new Map(
+      workers.flatMap((worker) =>
+        (worker.agents ?? []).map((agent): [string, string] => [
+          `${worker.id}/${agent.id}`,
+          agent.name,
+        ]),
+      ),
+    )
+  }
 
   public async list(user: User): Promise<WorkerAgent[]> {
     const stored = await getDataSource()

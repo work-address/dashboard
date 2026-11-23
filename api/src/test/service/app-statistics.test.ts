@@ -16,6 +16,7 @@ import { AppUsagePolicy } from '@/service/app-usage-policy'
 import { EProjectState } from '@/model/project'
 import { TimeCreateDto } from '@/model/dto/time'
 import { runPromise } from '@/service/effect-bridge'
+import { AgentRepository } from '@/repository/agent-repository'
 
 @suite()
 export class AppStatisticsTest extends AbstractDatabaseIntegration {
@@ -422,6 +423,89 @@ export class AppStatisticsTest extends AbstractDatabaseIntegration {
   }
 
   @test()
+  async agentRowsComeWithTheNamesOfTheirAgentsAndPeople() {
+    const owner = await this.userFixture.createPremiumUser()
+    const worker = await this.userFixture.createUser()
+    worker.name = 'Wanda Worker'
+    await this.conn.manager.save(worker)
+    const project = await this.container
+      .get<ProjectFixture>('ProjectFixture')
+      .create(owner, EProjectState.ACTIVE)
+    project.workerAddresses = [worker.address]
+    await this.conn.manager.save(project)
+
+    const agents = this.container.get<AgentRepository>('AgentRepository')
+    const agent = (name: string, slug: string, product: string) =>
+      agents.save(
+        worker,
+        { name, slug, product, isDefault: false, bindings: [] },
+        true,
+      )
+    const kept = await agent('My Codex', 'my-codex', 'codex')
+    const removed = await agent('Old Claude', 'old-claude', 'claude-code')
+    // An id the worker's list has never held, as a deleted agent's would be.
+    const gone = randomUUID()
+
+    const noon = new Date().setUTCHours(0, 0, 0, 0) - 86400000 + 12 * 3600000
+    const dayKey = (offset: number) =>
+      new Date(noon + offset * 86400000).toISOString().slice(0, 10)
+    for (const [agentId, product] of [
+      [kept.id, 'codex'],
+      [removed.id, 'claude-code'],
+      [gone, 'codex'],
+    ]) {
+      await this.agentRun({
+        projectId: project.id,
+        userId: worker.id,
+        agentId,
+        product,
+        status: 'completed',
+        fromAt: new Date(noon),
+        toAt: new Date(noon + 600000),
+      })
+    }
+    // Removed after it ran: it stays on its worker's list, and keeps its name.
+    await agents.remove(worker, removed.id)
+
+    const statistics =
+      this.container.get<StatisticsManager>('StatisticsManager')
+    const range = { from: dayKey(-1), to: dayKey(1), timeZone: 'UTC' }
+    const answer = await statistics.agentsDaily(range, owner)
+
+    // Every agent in the rows, by name; nameless only when off the list.
+    expect(answer.agents).to.deep.equal(
+      [
+        { id: gone, name: '', userId: worker.id },
+        { id: kept.id, name: 'My Codex', userId: worker.id },
+        { id: removed.id, name: 'Old Claude', userId: worker.id },
+      ].sort(
+        (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+      ),
+    )
+    expect(answer.people).to.deep.equal([
+      { id: worker.id, name: 'Wanda Worker' },
+    ])
+    expect(new Set(answer.daily.map((row) => row.agentId))).to.deep.equal(
+      new Set(answer.agents.map((item) => item.id)),
+    )
+
+    // The agent filter narrows the names with the rows.
+    const one = await statistics.agentsDaily(
+      { ...range, agentIds: [kept.id] },
+      owner,
+    )
+    expect(one.agents.map((item) => item.name)).to.deep.equal(['My Codex'])
+
+    // A period with no runs names nobody.
+    const quiet = await statistics.agentsDaily(
+      { from: dayKey(-9), to: dayKey(-8), timeZone: 'UTC' },
+      owner,
+    )
+    expect(quiet.agents).to.deep.equal([])
+    expect(quiet.people).to.deep.equal([])
+  }
+
+  @test()
   async agentTimeIsKeptPerWorkerAndAgentAndRunsCountOnTheDayTheyStart() {
     const owner = await this.userFixture.createPremiumUser()
     const worker = await this.userFixture.createUser()
@@ -540,7 +624,13 @@ export class AppStatisticsTest extends AbstractDatabaseIntegration {
       { ...range, agentIds: [theirs] },
       worker,
     )
-    expect(notMine).to.deep.equal({ daily: [], runs: [], runsDaily: [] })
+    expect(notMine).to.deep.equal({
+      daily: [],
+      runs: [],
+      runsDaily: [],
+      people: [],
+      agents: [],
+    })
     // An empty list narrows nothing.
     expect(
       rowsOf(await statistics.agentsDaily({ ...range, agentIds: [] }, owner)),

@@ -222,6 +222,8 @@ export class StatisticsHiddenHistoryTest extends AbstractDatabaseIntegration {
       daily: [],
       runs: [],
       runsDaily: [],
+      people: [],
+      agents: [],
     })
   }
 }

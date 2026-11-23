@@ -5,7 +5,9 @@ import type { AgentRunFilters } from './agent-runs'
 import {
   agentWorkedSeconds,
   type StatisticsAgentDailyRow,
+  type StatisticsAgentName,
   type StatisticsAgentRunDay,
+  type StatisticsPersonName,
   type StatisticsQuery,
 } from '@/entities/statistics'
 import {
@@ -76,6 +78,42 @@ export const agentHoursOf = (
   const seconds = agentWorkedSeconds(row)
 
   return seconds > 0 ? { [row.agentId]: seconds / 3600 } : {}
+}
+
+/**
+ * The agents a chart can name a series after, from the names that came with
+ * the rows, in name order - so an agent keeps its place and colour between
+ * periods. An agent its worker's list no longer holds reads as `unnamed`.
+ * Two people often give their agents the same name; those say whose each
+ * one is, so no two series read alike.
+ */
+export const agentSeriesNames = (
+  agents: StatisticsAgentName[],
+  people: StatisticsPersonName[],
+  unnamed: string,
+): { id: string; title: string }[] => {
+  const owners = new Map(people.map((person) => [person.id, person.name]))
+  const titled = agents.map((agent) => ({
+    ...agent,
+    title: agent.name || unnamed,
+  }))
+  const shared = new Map<string, number>()
+
+  for (const { title } of titled) {
+    shared.set(title, (shared.get(title) ?? 0) + 1)
+  }
+
+  return titled
+    .map(({ id, title, userId }) => {
+      const owner = owners.get(userId)
+
+      return {
+        id,
+        title:
+          (shared.get(title) ?? 0) > 1 && owner ? `${title} · ${owner}` : title,
+      }
+    })
+    .sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id))
 }
 
 /** A row's hours beside a person, alone, and waiting on a person. */

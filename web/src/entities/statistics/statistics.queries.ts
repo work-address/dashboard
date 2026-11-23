@@ -148,13 +148,20 @@ concurrency(statisticsInsightsQuery, { strategy: 'TAKE_LATEST' })
 const agentsHandler = async (
   query: StatisticsQuery,
 ): Promise<StatisticsAgents> => {
-  const { daily, runs, runsDaily, ...rest } = await run<
+  const { daily, runs, runsDaily, agents, people, ...rest } = await run<
     Pick<StatisticsAgents, 'daily' | 'runs'> &
-      Partial<Pick<StatisticsAgents, 'runsDaily'>> &
+      Partial<Pick<StatisticsAgents, 'runsDaily' | 'agents' | 'people'>> &
       HiddenFields
   >(() => baseApi.statisticsControllerAgentsDaily({ body: query }))
 
-  return { daily, runs, runsDaily: runsDaily ?? [], hidden: toHidden(rest) }
+  return {
+    daily,
+    runs,
+    runsDaily: runsDaily ?? [],
+    agents: agents ?? [],
+    people: people ?? [],
+    hidden: toHidden(rest),
+  }
 }
 
 export const statisticsAgentsQuery = createQuery({ handler: agentsHandler })

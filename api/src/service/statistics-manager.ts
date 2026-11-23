@@ -1,6 +1,7 @@
 import { inject, injectable } from 'inversify'
 import moment from 'moment-timezone'
 import { BadRequestError } from 'routing-controllers'
+import { AgentRepository } from '@/repository/agent-repository'
 import { ProjectRepository } from '@/repository/project-repository'
 import {
   StatisticsRepository,
@@ -36,6 +37,7 @@ const APP_KINDS = ['daily', 'ranking', 'titles', 'workers', 'projects']
 @injectable()
 export class StatisticsManager {
   @inject('ProjectAccess') protected access: ProjectAccess
+  @inject('AgentRepository') protected agents: AgentRepository
   @inject('Plan') protected plan: Plan
   @inject('ProjectRepository') protected projects: ProjectRepository
   @inject('ProjectTotals') protected totals: ProjectTotals
@@ -255,7 +257,8 @@ export class StatisticsManager {
    */
   public async agentsDaily(query: StatisticsQueryDto, user: User) {
     const scope = await this.scope(query, user)
-    if (!scope.projects.length) return { daily: [], runs: [], runsDaily: [] }
+    if (!scope.projects.length)
+      return { daily: [], runs: [], runsDaily: [], people: [], agents: [] }
     const runs = await this.repository.agentRuns(scope, {
       agentIds: query.agentIds,
     })
@@ -297,6 +300,9 @@ export class StatisticsManager {
           a.status.localeCompare(b.status),
       ),
       runsDaily: StatisticsInsights.runsDaily(runs, query.timeZone),
+      // Names travel with the rows, so a reader needs no second source for
+      // them - and an agent that has since been detached still has one.
+      ...(await this.named(daily)),
       ...this.hiddenHistory(scope),
     }
   }
@@ -384,23 +390,47 @@ export class StatisticsManager {
       [+scope.from, +scope.to],
       scope.query.timeZone,
     )
-    const runners = [...new Set(agentsDaily.map((row) => row.userId))]
-    const [names, agentNames] = await Promise.all([
-      this.repository.personNames([
-        ...new Set([
-          ...daily.flatMap((row) => (row.userId ? [row.userId] : [])),
-          ...runners,
-        ]),
-      ]),
-      this.repository.agentNames(runners),
+    return {
+      projects: scope.projects
+        .map(({ id, title }) => ({ id, title }))
+        .sort(
+          (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
+        ),
+      ...(await this.named(
+        agentsDaily,
+        daily.flatMap((row) => (row.userId ? [row.userId] : [])),
+      )),
+      daily,
+      agentsDaily,
+      ...(withAmounts && !scope.viewers.length
+        ? { amounts: await this.sharedAmounts(scope, agentsDaily) }
+        : {}),
+    }
+  }
+
+  /**
+   * Who rows are about: each agent as its worker named it, and the people -
+   * the ones who run those agents, with any others asked for. An agent is
+   * nameless only once it is off its worker's list; a removed or detached
+   * one keeps its name there, as it does on runs and invoice lines.
+   */
+  private async named(
+    agentRows: { userId: string; agentId: string }[],
+    otherPeople: string[] = [],
+  ): Promise<{
+    people: { id: string; name: string }[]
+    agents: { id: string; name: string; userId: string }[]
+  }> {
+    const runners = [...new Set(agentRows.map((row) => row.userId))]
+    const [people, agentNames] = await Promise.all([
+      this.repository.personNames([...new Set([...otherPeople, ...runners])]),
+      this.agents.names(runners),
     ])
     const agents = new Map(
-      agentsDaily.map(({ userId, agentId }) => [
+      agentRows.map(({ userId, agentId }) => [
         `${userId}/${agentId}`,
         {
           id: agentId,
-          // Nameless once it is off its worker's list; a removed agent keeps
-          // its name there, as it does on runs and invoice lines.
           name: agentNames.get(`${userId}/${agentId}`) ?? '',
           userId,
         },
@@ -410,18 +440,8 @@ export class StatisticsManager {
       a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
 
     return {
-      projects: scope.projects
-        .map(({ id, title }) => ({ id, title }))
-        .sort(
-          (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
-        ),
-      people: [...names].map(([id, name]) => ({ id, name })).sort(byName),
+      people: [...people].map(([id, name]) => ({ id, name })).sort(byName),
       agents: [...agents.values()].sort(byName),
-      daily,
-      agentsDaily,
-      ...(withAmounts && !scope.viewers.length
-        ? { amounts: await this.sharedAmounts(scope, agentsDaily) }
-        : {}),
     }
   }
 

@@ -308,6 +308,8 @@ export class AgentControllerTest extends BaseControllerTest {
       daily: [],
       runs: [],
       runsDaily: [],
+      people: [],
+      agents: [],
     })
     // Ids are checked before they reach a query, and a list has a limit.
     expect((await only(['codex'])).status).to.equal(400)

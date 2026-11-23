@@ -886,14 +886,10 @@ export class AgentRunRecord {
     projects: Project[],
   ): Promise<void> {
     if (!runs.length) return
-    const workers = await tx.find(User, {
-      where: { id: In([...new Set(runs.map((run) => run.userId))]) },
-      select: { id: true, agents: true },
-    })
-    const names = new Map<string, string>()
-    for (const worker of workers)
-      for (const agent of worker.agents ?? [])
-        names.set(`${worker.id}/${agent.id}`, agent.name)
+    const names = await this.agents.names(
+      runs.map((run) => run.userId),
+      tx,
+    )
     const byProject = new Map(projects.map((p) => [p.id, p]))
     for (const run of runs) {
       run.agentName = names.get(`${run.userId}/${run.agentId}`) ?? null

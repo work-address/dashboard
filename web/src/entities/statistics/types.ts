@@ -126,10 +126,23 @@ export type StatisticsAgentRunDay = {
   count: number
 }
 
+/**
+ * An agent in the rows, as its worker named it. The name is empty only when
+ * the worker's list no longer holds the agent; one that was detached or
+ * removed keeps its name.
+ */
+export type StatisticsAgentName = { id: string; name: string; userId: string }
+
+/** Someone who runs an agent in the rows. */
+export type StatisticsPersonName = { id: string; name: string }
+
 export type StatisticsAgents = {
   daily: StatisticsAgentDailyRow[]
   runs: StatisticsAgentRunCount[]
   runsDaily: StatisticsAgentRunDay[]
+  /** A name for every agent in `daily`, and for the people who run them. */
+  agents: StatisticsAgentName[]
+  people: StatisticsPersonName[]
   hidden: StatisticsHidden | null
 }
 

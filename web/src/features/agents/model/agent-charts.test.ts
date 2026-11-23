@@ -5,6 +5,7 @@ import {
   agentChartsQuery,
   agentHoursOf,
   agentRunEndingsOf,
+  agentSeriesNames,
   agentStateHoursOf,
   getAgentChartsRange,
 } from './agent-charts'
@@ -100,5 +101,68 @@ describe('run endings', () => {
     expect(
       agentRunEndingsOf({ day: '2026-11-10', status: 'unknown', count: 3 }),
     ).toEqual({ running: 3 })
+  })
+})
+
+describe('agent series names', () => {
+  const people = [
+    { id: 'ada', name: 'Ada' },
+    { id: 'bo', name: 'Bo' },
+  ]
+
+  it('names agents as their workers do, in name order', () => {
+    expect(
+      agentSeriesNames(
+        [
+          { id: '2', name: 'Reviewer', userId: 'ada' },
+          { id: '1', name: 'Builder', userId: 'ada' },
+        ],
+        people,
+        'Removed agent',
+      ),
+    ).toEqual([
+      { id: '1', title: 'Builder' },
+      { id: '2', title: 'Reviewer' },
+    ])
+  })
+
+  it('says whose an agent is when two share a name', () => {
+    expect(
+      agentSeriesNames(
+        [
+          { id: '1', name: 'codex', userId: 'bo' },
+          { id: '2', name: 'codex', userId: 'ada' },
+          { id: '3', name: 'hermes', userId: 'ada' },
+        ],
+        people,
+        'Removed agent',
+      ).map((item) => item.title),
+    ).toEqual(['codex · Ada', 'codex · Bo', 'hermes'])
+  })
+
+  it('reads an agent off its worker’s list as removed, and no other', () => {
+    expect(
+      agentSeriesNames(
+        [
+          { id: '1', name: '', userId: 'ada' },
+          { id: '2', name: 'Detached but kept', userId: 'ada' },
+        ],
+        people,
+        'Removed agent',
+      ).map((item) => item.title),
+    ).toEqual(['Detached but kept', 'Removed agent'])
+  })
+
+  it('leaves the name bare when the person is not known', () => {
+    expect(
+      agentSeriesNames(
+        [
+          { id: '1', name: 'codex', userId: 'gone' },
+          { id: '2', name: 'codex', userId: 'ada' },
+        ],
+        people,
+        'Removed agent',
+      ).map((item) => item.title),
+    ).toEqual(['codex', 'codex · Ada'])
   })
 })

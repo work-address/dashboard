@@ -119,36 +119,6 @@ export default function AgentsPage() {
     return { projects, people }
   }, [team])
 
-  // Every agent the reader may see runs of, whoever runs it: the charts
-  // name agents the filter's person does not own.
-  const agentNames = useMemo(() => {
-    const owners = new Map<string, { name: string; person: string }>()
-    for (const project of team?.projects ?? []) {
-      for (const person of project.people) {
-        for (const agent of person.agents) {
-          owners.set(agent.id, {
-            name: agent.name,
-            person: person.name || person.address,
-          })
-        }
-      }
-    }
-
-    const shared = new Map<string, number>()
-    for (const { name } of owners.values()) {
-      shared.set(name, (shared.get(name) ?? 0) + 1)
-    }
-
-    // Two people often give their agents the same name; the charts then
-    // say whose each one is, so no two series read alike.
-    return new Map(
-      [...owners].map(([id, { name, person }]) => [
-        id,
-        (shared.get(name) ?? 0) > 1 ? `${name} · ${person}` : name,
-      ]),
-    )
-  }, [team])
-
   const change = (
     next: Partial<AgentRunFilters>,
     nextPreset?: DateRangePreset,
@@ -188,7 +158,7 @@ export default function AgentsPage() {
         title={t('agents.page.title')}
         description={t('agents.page.description')}
       />
-      <AgentsCharts filters={filters} agentNames={agentNames} />
+      <AgentsCharts filters={filters} />
       <WorkspacePanel
         title={t('agents.list.title')}
         aside={

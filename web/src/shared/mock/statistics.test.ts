@@ -275,6 +275,8 @@ describe('demo agent time', () => {
       daily: [],
       runs: [],
       runsDaily: [],
+      people: [],
+      agents: [],
     })
   })
 

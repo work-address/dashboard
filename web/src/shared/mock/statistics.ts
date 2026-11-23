@@ -566,6 +566,47 @@ function agentRuns(
   return visible.map((run) => ({ ...run, agentId: agentIdOf(run) }))
 }
 
+/**
+ * Who rows are about, as the API's `StatisticsManager.named` has it: each
+ * agent by its name, and the people - the ones who run those agents, with
+ * any others asked for. The demo's agent is named for its product, as on
+ * the Team page.
+ */
+function named(
+  db: Db,
+  agentRows: { userId: string; agentId: string }[],
+  runs: { agentId: string; product: string }[],
+  otherPeople: string[] = [],
+) {
+  const byName = (
+    a: { name: string; id: string },
+    b: { name: string; id: string },
+  ) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+  const agents = new Map(
+    agentRows.map(({ userId, agentId }) => [
+      agentId,
+      {
+        id: agentId,
+        name: runs.find((run) => run.agentId === agentId)?.product ?? '',
+        userId,
+      },
+    ]),
+  )
+
+  return {
+    people: [
+      ...new Set([...otherPeople, ...agentRows.map((row) => row.userId)]),
+    ]
+      .map((id) => {
+        const user = userOf(db, id)
+
+        return { id, name: user?.name || user?.address || id }
+      })
+      .sort(byName),
+    agents: [...agents.values()].sort(byName),
+  }
+}
+
 export function agentsDaily(scope: Scope) {
   const runs = agentRuns(scope, { agentIds: scope.query.agentIds })
   const people = new Set(runs.map((run) => run.userId))
@@ -597,19 +638,23 @@ export function agentsDaily(scope: Scope) {
     row.count++
     counts.set(key, row)
   }
+  const daily = StatisticsInsights.agentDaily(
+    runs,
+    human,
+    [scope.from, scope.to],
+    scope.query.timeZone,
+    scope.query.bucket ?? 'day',
+  )
+
   return {
-    daily: StatisticsInsights.agentDaily(
-      runs,
-      human,
-      [scope.from, scope.to],
-      scope.query.timeZone,
-      scope.query.bucket ?? 'day',
-    ),
+    daily,
     runs: [...counts.values()].sort(
       (a, b) =>
         a.product.localeCompare(b.product) || a.status.localeCompare(b.status),
     ),
     runsDaily: StatisticsInsights.runsDaily(runs, scope.query.timeZone),
+    // Names travel with the rows, as the API sends them.
+    ...named(scope.db, daily, runs),
     ...hidden(scope),
   }
 }
@@ -715,40 +760,18 @@ export function sharedFigures(scope: Scope, withAmounts: boolean) {
     [scope.from, scope.to],
     query.timeZone,
   )
-  const byName = (
-    a: { name: string; id: string },
-    b: { name: string; id: string },
-  ) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
-  const named = new Set([
-    ...daily.flatMap((row) => (row.userId ? [row.userId] : [])),
-    ...agentsDaily.map((row) => row.userId),
-  ])
-  const agents = new Map(
-    agentsDaily.map(({ userId, agentId }) => [
-      agentId,
-      {
-        id: agentId,
-        // The demo's agent is named for its product, as on the Team page.
-        name: runs.find((run) => run.agentId === agentId)?.product ?? '',
-        userId,
-      },
-    ]),
-  )
-
   return {
     projects: scope.projects
       .map(({ id, title }) => ({ id, title }))
       .sort(
         (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
       ),
-    people: [...named]
-      .map((id) => {
-        const user = userOf(db, id)
-
-        return { id, name: user?.name || user?.address || id }
-      })
-      .sort(byName),
-    agents: [...agents.values()].sort(byName),
+    ...named(
+      db,
+      agentsDaily,
+      runs,
+      daily.flatMap((row) => (row.userId ? [row.userId] : [])),
+    ),
     daily,
     agentsDaily,
     ...(withAmounts && scope.viewers.size === 0

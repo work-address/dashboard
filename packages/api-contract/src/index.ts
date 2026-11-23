@@ -1080,6 +1080,48 @@ export const CONTRACT_SCENARIOS: ContractScenario[] = [
     }),
   ),
   {
+    name: 'agent time comes with the names of its agents and their people',
+    as: 'owner',
+    request: agentsDaily(),
+    status: 200,
+    check: (body, w) => {
+      const rows = body.daily as { userId: string; agentId: string }[]
+      const agents = body.agents as {
+        id: string
+        name: string
+        userId: string
+      }[]
+      const people = body.people as { id: string; name: string }[]
+      const ids = (list: string[]) => [...new Set(list)].sort()
+
+      return (
+        rowsAre(
+          'the agents named',
+          ids(agents.map((agent) => agent.id)),
+          ids(rows.map((row) => row.agentId)),
+        ) ??
+        rowsAre(
+          'the people named',
+          ids(people.map((person) => person.id)),
+          ids(rows.map((row) => row.userId)),
+        ) ??
+        (agents.every((agent) =>
+          rows.some(
+            (row) => row.agentId === agent.id && row.userId === agent.userId,
+          ),
+        )
+          ? undefined
+          : 'an agent is named under someone who did not run it') ??
+        (agents.find((agent) => agent.id === w.agent)?.name
+          ? undefined
+          : 'the worker’s agent has no name') ??
+        (people.every((person) => person.name)
+          ? undefined
+          : 'a person has no name')
+      )
+    },
+  },
+  {
     name: 'agent runs are counted over the period, and on the day each started',
     as: 'owner',
     request: agentsDaily(),
