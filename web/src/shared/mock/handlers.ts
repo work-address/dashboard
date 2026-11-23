@@ -7,6 +7,7 @@
 import { http, HttpResponse, delay, type HttpHandler } from 'msw'
 
 import { spanMinutes } from './db'
+import { settleHistory } from './kept-history'
 import {
   listReports,
   openReport,
@@ -123,6 +124,8 @@ function route(
       )
     }
     const db = demoDb()
+    // Every read shows what the projects still keep, as on the API.
+    settleHistory(db)
     if (auth && !isSignedIn(request)) {
       return HttpResponse.json({ message: 'Unauthorized' }, { status: 401 })
     }

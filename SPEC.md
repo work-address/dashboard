@@ -394,6 +394,12 @@ them; paying converts the whole workspace so nothing rotates. Hosted screenshots
 are kept for 12 months at most. A self-hosted instance is unconditionally entitled
 — unlimited seats, no rotation (see `service/entitlement.ts`).
 
+Hiding is done to the stored rows, in one place (`service/kept-history.ts`): a
+project is settled after every write to it and before it is read, on a read at
+most once in ten minutes. So totals, charts and the lists of entries and runs
+leave out what the plan hides on a project nobody has written to for weeks, as
+on a busy one. What an invoice covers is never hidden.
+
 When Premium ends, through a missed renewal or a cancellation, membership stays.
 Billing keeps it on for 14 days first. After that, tracking is limited to the
 owner and two workers the owner chooses, or the first two listed. Everyone keeps
@@ -407,6 +413,7 @@ with the work done.
 **A shared report follows the same rule.** Once any day of its span is older
 than what the plan of a project's owner keeps, the link answers that the
 report is no longer available, and upgrading brings it back. It is checked
-each time the link is opened, since hidden time is only removed the next time
-the project is written to. A report is not exempt the way invoiced hours are:
+each time the link is opened, and the whole report goes, not its older days:
+a report that had quietly lost its first week would read as less work done.
+A report is not exempt the way invoiced hours are:
 sharing one every week would otherwise keep all history without paying.

@@ -12,7 +12,7 @@ import { ProjectRepository } from '@/repository/project-repository'
 import { ITimeInsertionResult } from '@/model/time'
 import { ErrorFormatter } from '@/service/error-formatter'
 import { ILogger } from '@/model/logging'
-import { TimeCreateDto } from '@/model/dto/time'
+import { TimeCreateDto, TimeSearchDto } from '@/model/dto/time'
 import AccessException from '@/exception/access-exception'
 import ConstraintsValidationException from '@/exception/constraints-validation-exception'
 import RetentionExceededException from '@/exception/retention-exceeded-exception'
@@ -20,6 +20,7 @@ import MobileTimeNotAllowedException from '@/exception/mobile-time-not-allowed-e
 import { Project } from '@/entity/project'
 import { ImageResizer } from '@/service/image-resizer'
 import { Plan } from '@/service/plan'
+import { KeptHistory } from '@/service/kept-history'
 import { FREE_PLAN_WORKERS, FREE_RETENTION_DAYS } from '@/model/plan'
 import { RepoEffect } from '@/repository/abstract-repository-template'
 import { fromPromise } from '@/service/effect-bridge'
@@ -36,6 +37,8 @@ export class TimeManager {
   protected logger: ILogger
   @inject('Plan')
   protected plan: Plan
+  @inject('KeptHistory')
+  protected history: KeptHistory
 
   /**
    * A tracker syncs a batch and each entry succeeds or fails on its own, so one
@@ -59,7 +62,8 @@ export class TimeManager {
       const now = new Date()
       // The projects whose owner's plan keeps only a trailing window, and
       // from when. One moment, one window: they all share the cutoff.
-      const keptFromByProject = new Map<string, Date>()
+      // Every project the batch reached, for what follows a write to it.
+      const written = new Map<string, Project>()
       const touchedProjects = new Set<string>()
 
       const storeEntry = (
@@ -80,11 +84,7 @@ export class TimeManager {
           // Before any refusal: an upload's arrival is what rotates a project
           // past its window, whether or not the plan lets its author record,
           // as for agent runs.
-          const keptFrom = this.plan.keptFrom(project.user, now)
-
-          if (keptFrom) {
-            keptFromByProject.set(project.id, keptFrom)
-          }
+          written.set(project.id, project)
 
           if (!(yield* fromPromise(() => this.plan.mayTrack(project, user)))) {
             return yield* Effect.fail(
@@ -94,17 +94,15 @@ export class TimeManager {
             )
           }
 
-          if (keptFrom) {
-            // Refuse rather than accept-and-purge: saving this row and deleting
-            // it moments later would hand the client an id for a row that no
-            // longer exists, and a syncing tracker would drop its local copy.
-            if (fromAt < keptFrom) {
-              return yield* Effect.fail(
-                new RetentionExceededException(
-                  `Entry starts before the ${FREE_RETENTION_DAYS}-day retention window of this project's plan and was not stored`,
-                ),
-              )
-            }
+          // Refuse rather than accept-and-hide: saving this row and hiding
+          // it moments later would hand the client an id for a row that no
+          // longer exists, and a syncing tracker would drop its local copy.
+          if (this.history.refuses(project, fromAt, now)) {
+            return yield* Effect.fail(
+              new RetentionExceededException(
+                `Entry starts before the ${FREE_RETENTION_DAYS}-day retention window of this project's plan and was not stored`,
+              ),
+            )
           }
 
           // The uploader names its source, so naming one grants nothing: phone
@@ -208,14 +206,9 @@ export class TimeManager {
           ),
         )
 
-        const [keptFrom] = keptFromByProject.values()
-
-        if (keptFrom) {
-          yield* this.timeRepository.softDeleteExpiredEntriesForProjects(
-            [...keptFromByProject.keys()],
-            keptFrom,
-          )
-        }
+        yield* fromPromise(() =>
+          this.history.settle([...written.values()], { force: true, now }),
+        )
 
         yield* this.timeRepository.purgeExpiredScreenshots(
           [...touchedProjects],
@@ -267,6 +260,19 @@ export class TimeManager {
         user,
       )
     })
+  }
+
+  /**
+   * The entries a reader may list. Their projects are settled first, as for
+   * every read, so the list shows what those projects still keep.
+   */
+  public search(
+    search: TimeSearchDto,
+    user: User,
+  ): RepoEffect<[Time[], number]> {
+    return fromPromise(() => this.history.settleFor(user)).pipe(
+      Effect.flatMap(() => this.timeRepository.findAndCount(search, user)),
+    )
   }
 
   /** Allowed on an invoiced entry too: `SPEC.md` keeps this one hand change. */

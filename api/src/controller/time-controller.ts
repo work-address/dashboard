@@ -82,7 +82,7 @@ export class TimeController {
     @Body() search: TimeSearchDto,
     @CurrentUser() currentUser: User,
   ) {
-    return runPromise(this.timeRepository.findAndCount(search, currentUser))
+    return runPromise(this.timeManager.search(search, currentUser))
   }
 
   @OpenAPIExtended({

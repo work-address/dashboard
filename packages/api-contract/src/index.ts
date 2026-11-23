@@ -63,7 +63,8 @@ export interface ContractWorld {
   /**
    * `freeOwner`'s, with nobody else on it, so its history is hidden at 14
    * days. Holds 30 minutes of the free owner's, four hours old, on
-   * `freeInvoice` and marked paid by hand.
+   * `freeInvoice` and marked paid by hand, and 30 more from twenty days ago
+   * on no invoice, which the plan no longer shows.
    */
   freeProject: string
   /** Requested, issued by the free owner. */
@@ -1019,6 +1020,33 @@ export const CONTRACT_SCENARIOS: ContractScenario[] = [
   },
 
   // Hidden history: SPEC.md "What premium governs"
+  {
+    name: 'a free owner’s totals leave out time older than the plan keeps',
+    as: 'freeOwner',
+    request: freeOverview,
+    status: 200,
+    // Thirty minutes twenty days ago are hidden; the invoiced thirty stay.
+    check: (body, world) => {
+      const row = (body.totals as Record<string, unknown>[]).find(
+        (totals) => totals.projectId === world.freeProject,
+      )
+      return row?.trackedSeconds === 1800
+        ? undefined
+        : `tracked ${row?.trackedSeconds}`
+    },
+  },
+  {
+    name: 'a free owner’s list of entries leaves it out too',
+    as: 'freeOwner',
+    request: search,
+    status: 200,
+    check: (body) =>
+      rowsAre(
+        'the entries listed',
+        (body[0] as { note: string }[]).map((row) => row.note),
+        ['free'],
+      ),
+  },
   {
     name: 'a free owner’s totals say from when their plan hides history, and that they can upgrade',
     as: 'freeOwner',

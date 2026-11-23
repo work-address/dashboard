@@ -23,12 +23,11 @@ import { Span, TimeSpans } from '@/service/time-spans'
 import { WorkerAgents } from '@/service/worker-agents'
 import {
   HiddenHistory,
-  hiddenHistory,
   projectsForPeople,
   refusesQuery,
   refusesReport,
 } from '@work-address/statistics-core'
-import { Plan } from '@/service/plan'
+import { KeptHistory } from '@/service/kept-history'
 import { ProjectAccess } from '@/service/project-access'
 import { ProjectTotals } from '@/service/project-totals'
 
@@ -38,7 +37,7 @@ const APP_KINDS = ['daily', 'ranking', 'titles', 'workers', 'projects']
 export class StatisticsManager {
   @inject('ProjectAccess') protected access: ProjectAccess
   @inject('AgentRepository') protected agents: AgentRepository
-  @inject('Plan') protected plan: Plan
+  @inject('KeptHistory') protected history: KeptHistory
   @inject('ProjectRepository') protected projects: ProjectRepository
   @inject('ProjectTotals') protected totals: ProjectTotals
   @inject('InvoiceRepository') protected invoices: InvoiceRepository
@@ -74,6 +73,7 @@ export class StatisticsManager {
       if (!projects.some((p) => p.id === invoice.project.id))
         throw new AccessException()
     }
+    await this.history.settle(projects)
     return this.scopeOf(projects, query, user, period)
   }
 
@@ -105,9 +105,11 @@ export class StatisticsManager {
       user.id,
       query.userIds,
     )
-    return projects.length && !refusesQuery(projects, roleOf, user.id, query)
-      ? this.scopeOf(projects, query, user, period)
-      : null
+    if (!projects.length || refusesQuery(projects, roleOf, user.id, query)) {
+      return null
+    }
+    await this.history.settle(projects)
+    return this.scopeOf(projects, query, user, period)
   }
 
   /** The query's days as instants in its time zone; `to` is exclusive. */
@@ -493,14 +495,8 @@ export class StatisticsManager {
    * invoice hides nothing, since rotation keeps what an invoice covers.
    */
   public hiddenHistory(scope: StatisticsScope): HiddenHistory {
+    // What an invoice covers is never hidden, so a read by invoice shows all.
     if (scope.query.invoiceId) return {}
-    const now = new Date()
-    return hiddenHistory(
-      scope.projects.map((project) => ({
-        keptFrom: this.plan.keptFrom(project.user, now)?.getTime() ?? null,
-        owned: project.isOwner(scope.user),
-      })),
-      +scope.from,
-    )
+    return this.history.hidden(scope.projects, scope.from, scope.user)
   }
 }

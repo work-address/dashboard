@@ -38,7 +38,7 @@ A "Demo" pill in the bottom-left corner, above the app, expands into:
 1. **Role** - Owner, Worker, Viewer, Mixed.
 2. **Data** - the world (below), with Shuffle for Random.
 3. **Profile** - Fresh (wallet only) or Finished (name, title, company, bio, rate, skills, socials).
-4. **Plan** - Premium or Free.
+4. **Plan** - Premium or Free. On Free the demo hides entries and runs older than 14 days that no invoice covers, as the API does, and Premium brings them back. Most of a world's older entries are invoiced, so it shows mainly in the agent runs.
 5. **Network** - speed (instant, fast, slow), failure (none, every request), and fail the next request.
 6. **Sign-in screen** - Google offered, wallet only, methods failed, script failed, and each way Google sign-in can be refused. Takes effect on a reload, without signing in.
 7. **Scenarios** - a worker uploads time now; an agent run finishes with a prompt; the owner marks an invoice paid; a review window passes.

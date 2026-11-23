@@ -20,6 +20,7 @@ import {
   type Span,
 } from '@work-address/statistics-core'
 
+import { FREE_RETENTION_MS } from './kept-history'
 import {
   agentIdOf,
   hasDetail,
@@ -77,7 +78,6 @@ type Scope = {
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 
 /** `FREE_RETENTION_DAYS` in the API's model/plan.ts. */
-const FREE_RETENTION_MS = 14 * 86_400_000
 
 /** Whether a report is refused to this scope's reader. */
 export const reportRefused = (scope: Scope, kind: string) =>
@@ -440,8 +440,8 @@ export function apps(scope: Scope, kind: string) {
  * What the period asks for and a plan hides, on the API's terms
  * (`StatisticsManager.hiddenHistory`): the limit is each project owner's, and
  * a read by invoice hides nothing. The demo's Free plan is its visitor's, so
- * it shows on the projects they own. The demo only says so: its seed keeps
- * the older time in place.
+ * it shows on the projects they own. `settleHistory` hides the time itself
+ * before each request.
  */
 export const hidden = (scope: Scope) =>
   scope.query.invoiceId

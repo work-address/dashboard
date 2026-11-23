@@ -215,6 +215,8 @@ export class ApiContractTest
 
     const freeProject = await this.projectFixture.createPersonal(freeOwner, 60)
     const free = await entry(freeProject, 4, 'free', freeOwner)
+    // Twenty days old and on no invoice: past what the free plan keeps.
+    await entry(freeProject, 20 * 24, 'free-old', freeOwner)
     const freeInvoice = await runPromise(
       invoices.createFromTimeIds(freeProject, freeOwner, [free.id]),
     )

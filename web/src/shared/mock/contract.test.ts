@@ -130,6 +130,10 @@ const mock: ContractAdapter = {
         invoiceId: 'free',
         isPaid: true,
       }),
+      entry('free-old', 20 * 24, {
+        projectId: 'free',
+        userId: PEOPLE.freeOwner,
+      }),
     ]
     const invoice: MockInvoice = {
       id: 'invoice',

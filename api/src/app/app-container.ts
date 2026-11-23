@@ -5,6 +5,7 @@ import { AgentRunRecord } from '@/service/agent-run-record'
 import { Container } from 'inversify'
 import { UserSettingsManager } from '@/service/user-settings-manager'
 import { StatisticsManager } from '@/service/statistics-manager'
+import { KeptHistory } from '@/service/kept-history'
 import { ProjectTotals } from '@/service/project-totals'
 import { StatisticsRepository } from '@/repository/statistics-repository'
 import { SharedReportRepository } from '@/repository/shared-report-repository'
@@ -72,6 +73,7 @@ export class AppContainer {
     container.bind<OpenApi>('OpenApi').to(OpenApi)
 
     container.bind<StatisticsManager>('StatisticsManager').to(StatisticsManager)
+    container.bind<KeptHistory>('KeptHistory').to(KeptHistory)
     container.bind<ProjectTotals>('ProjectTotals').to(ProjectTotals)
     container
       .bind<StatisticsRepository>('StatisticsRepository')
@@ -130,9 +132,7 @@ export class AppContainer {
       .bind<EntitlementSignature>('EntitlementSignature')
       .to(EntitlementSignature)
     container.bind<UserManager>('UserManager').to(UserManager)
-    container
-      .bind<AdminUserManager>('AdminUserManager')
-      .to(AdminUserManager)
+    container.bind<AdminUserManager>('AdminUserManager').to(AdminUserManager)
     container.bind<TimeManager>('TimeManager').to(TimeManager)
     container.bind<InvoiceManager>('InvoiceManager').to(InvoiceManager)
     container.bind<Mailer>('Mailer').to(Mailer)

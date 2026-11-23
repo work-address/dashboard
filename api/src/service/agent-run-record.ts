@@ -30,6 +30,7 @@ import { AgentRepository } from '@/repository/agent-repository'
 import { AgentIdentity } from '@/service/agent-identity'
 import { AgentTimeNormalizer } from '@/service/agent-time-normalizer'
 import { Plan } from '@/service/plan'
+import { KeptHistory } from '@/service/kept-history'
 import { ProjectAccess } from '@/service/project-access'
 import { WorkerAgents } from '@/service/worker-agents'
 
@@ -122,6 +123,7 @@ export class AgentRunRecord {
   @inject('AgentRepository') private agents: AgentRepository
   @inject('ProjectAccess') private access: ProjectAccess
   @inject('Plan') private plan: Plan
+  @inject('KeptHistory') private history: KeptHistory
 
   /**
    * Stores a credentialed batch and projects the runs it touches. Every check
@@ -151,9 +153,8 @@ export class AgentRunRecord {
     const submittedIds = parsed.data.events.map((event) => event.eventId)
     const events = parsed.data.events.map((event) => AgentIdentity.event(event))
     const health = parsed.data.health
-    // The projects whose owner's plan keeps only a trailing window, and from
-    // when. One moment, one window: they all share the cutoff.
-    const keptFromByProject = new Map<string, Date>()
+    // Every project the batch reached, for what follows a write to it.
+    const written = new Map<string, Project>()
 
     const results = await getDataSource().transaction(async (tx) => {
       const now = Date.now()
@@ -189,9 +190,7 @@ export class AgentRunRecord {
           projectId,
           project && (await this.plan.mayTrack(project, user)) ? project : null,
         )
-        const keptFrom =
-          project && this.plan.keptFrom(project.user, new Date(now))
-        if (project && keptFrom) keptFromByProject.set(project.id, keptFrom)
+        if (project) written.set(project.id, project)
       }
       if (
         events.some(
@@ -240,7 +239,7 @@ export class AgentRunRecord {
       return results
     })
 
-    await this.rotate(keptFromByProject)
+    await this.history.settle([...written.values()], { force: true })
 
     return {
       results: results.map((result, index) => ({
@@ -579,26 +578,6 @@ export class AgentRunRecord {
   }
 
   /**
-   * Hides the runs older than the owner's plan keeps (`Plan.keptFrom`), when
-   * new events arrive for the project. Runs on an invoice stay as its evidence.
-   * Soft, so `restoreRotated` can undo it on an upgrade.
-   */
-  private async rotate(keptFromByProject: Map<string, Date>): Promise<void> {
-    const projectIds = [...keptFromByProject.keys()]
-    const [cutoff] = keptFromByProject.values()
-    if (!cutoff) return
-    await getDataSource()
-      .createQueryBuilder()
-      .softDelete()
-      .from(TimeAgent)
-      .where('"projectId" IN (:...projectIds)', { projectIds })
-      .andWhere('"fromAt" < :cutoff', { cutoff })
-      .andWhere('"invoiceId" IS NULL')
-      .andWhere('"deletedAt" IS NULL')
-      .execute()
-  }
-
-  /**
    * Brings back the runs rotation hid on this owner's projects, on their
    * upgrade. Rotation is the only soft delete of a run, so anything marked
    * deleted is something the free plan hid.
@@ -762,6 +741,8 @@ export class AgentRunRecord {
       Date.parse(query.toAt) <= Date.parse(query.fromAt)
     )
       throw new BadRequestError('INVALID_RANGE')
+    // A list shows what the reader's projects still keep, like every read.
+    await this.history.settleFor(user, new Date(now))
     return getDataSource().transaction(async (tx) => {
       const projects = query.projectId
         ? [await this.agents.project(tx, query.projectId, user, false)]

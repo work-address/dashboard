@@ -8,6 +8,7 @@ import { User } from '@/entity/user'
 import { EInvoiceState } from '@/model/invoice'
 import { ITimeTotals } from '@/model/time'
 import { TimeRepository } from '@/repository/time-repository'
+import { KeptHistory } from '@/service/kept-history'
 import { ProjectAccess, ProjectRole } from '@/service/project-access'
 
 /**
@@ -90,6 +91,7 @@ const ACTIVE = `LEAST(${SECONDS}, GREATEST(0, COALESCE(time."minutesActive",0)*6
 @injectable()
 export class ProjectTotals {
   @inject('ProjectAccess') protected access: ProjectAccess
+  @inject('KeptHistory') protected history: KeptHistory
   @inject('TimeRepository') protected times: TimeRepository
 
   public async read(
@@ -107,6 +109,8 @@ export class ProjectTotals {
       )
 
     if (!onProject.length) return []
+
+    await this.history.settle(onProject.map(({ project }) => project))
 
     const [entries, settled] = await Promise.all([
       this.entrySums(onProject, reader, span),

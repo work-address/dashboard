@@ -217,6 +217,11 @@ export type Db = {
   credentials: MockCredential[]
   /** Empty until the visitor shares one. */
   reports: MockReport[]
+  /**
+   * What a free owner's plan no longer shows, set aside by `settleHistory`
+   * so a switch to Premium can bring it back.
+   */
+  hidden: { times: MockTime[]; runs: MockRun[] }
 }
 
 type WorldShape = {
@@ -503,6 +508,7 @@ export function buildDb(settings: DemoSettings, now: number): Db {
     agents: [],
     credentials: [],
     reports: [],
+    hidden: { times: [], runs: [] },
   }
 }
 
