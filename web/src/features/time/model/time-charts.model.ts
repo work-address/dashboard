@@ -20,11 +20,6 @@ type TimeChartsRequest = {
 export const timeChartsRequested = createEvent<TimeChartsRequest>()
 export const timeChartsModeChanged = createEvent<TimeChartsMode>()
 
-export const $timeChartsRange = createStore<TimeChartsRange | null>(null).on(
-  timeChartsRequested,
-  (_, { range }) => range,
-)
-
 export const $timeChartsMode = createStore<TimeChartsMode>('projects').on(
   timeChartsModeChanged,
   (_, mode) => mode,
@@ -41,6 +36,15 @@ const toStatisticsQuery = ({
   // A day or two is drawn by the hour, and the rows have to arrive that way.
   ...(askGrain(range) === 'hour' ? { bucket: 'hour' as const } : {}),
 })
+
+/**
+ * The statistics query the page's charts show: its period and filters as
+ * one request. What "Share report" shares is exactly this.
+ */
+export const $timeChartsQuery = createStore<StatisticsQuery | null>(null).on(
+  timeChartsRequested,
+  (_, request) => toStatisticsQuery(request),
+)
 
 sample({
   clock: timeChartsRequested,

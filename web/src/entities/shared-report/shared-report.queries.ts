@@ -26,13 +26,16 @@ concurrency(sharedReportsQuery, { strategy: 'TAKE_LATEST' })
 
 export const shareReportMutation = createMutation({
   handler: async (body: SharedReportCreate): Promise<SharedReport> =>
-    (await runApiData(() =>
-      apiClient.post({
-        url: '/api/report',
-        security: bearer,
-        headers: json,
-        body,
-      }),
+    (await runApiData(
+      () =>
+        apiClient.post({
+          url: '/api/report',
+          security: bearer,
+          headers: json,
+          body,
+        }),
+      // The dialog says why a report could not be shared, beside its form.
+      'in-place',
     )) as SharedReport,
 })
 

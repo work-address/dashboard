@@ -104,7 +104,7 @@ export {
 } from './time-charts'
 export {
   $timeChartsMode,
-  $timeChartsRange,
+  $timeChartsQuery,
   timeChartsModeChanged,
   timeChartsRequested,
 } from './time-charts.model'

@@ -342,7 +342,8 @@ describe('shared reports in the demo', () => {
     const status = async (fields: Record<string, unknown>) =>
       (await share({ projectIds: [project.id], ...fields })).status
 
-    expect(await status({ projectIds: [] })).toBe(400)
+    // No project named is every project, as the API has it.
+    expect(await status({ projectIds: [] })).toBe(200)
     expect(await status({ projectIds: 'all' })).toBe(400)
     expect(
       await status({
@@ -360,13 +361,15 @@ describe('shared reports in the demo', () => {
     expect(await status({ projectIds: ['not-a-project'] })).toBe(403)
     expect(await status({ title: 'x'.repeat(120), userIds: [] })).toBe(200)
 
-    // A viewer shares time, and may not switch on money they cannot see.
+    // A viewer shares time; amounts they asked for are left off, not refused.
     const { ownerId, viewerIds } = project
 
     project.ownerId = other.id
     project.viewerIds = [db.meId]
     expect(await status({})).toBe(200)
-    expect(await status({ showAmounts: true })).toBe(403)
+    const viewed = await share({ projectIds: [project.id], showAmounts: true })
+    expect(viewed.status).toBe(200)
+    expect((viewed.body as { showAmounts: boolean }).showAmounts).toBe(false)
     expect(await status({ userIds: [other.id] })).toBe(403)
     project.ownerId = ownerId
     project.viewerIds = viewerIds

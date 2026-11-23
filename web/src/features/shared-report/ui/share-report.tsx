@@ -5,7 +5,9 @@ import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
 import {
+  $shareAmountsDropped,
   $shareReportDraft,
+  $shareReportError,
   $shareReportPending,
   $sharedReport,
   getReportDays,
@@ -14,9 +16,12 @@ import {
   shareReportClosed,
   shareReportOpened,
   shareReportSubmitted,
-  type ReportDraft,
+  toReportDraft,
 } from '../model'
 
+import type { StatisticsQuery } from '@/entities/statistics'
+
+import { $projects } from '@/entities/projects'
 import {
   Button,
   Checkbox,
@@ -29,29 +34,45 @@ import {
 const ICON_SIZE = 14
 
 type Props = {
-  /** What the page's filters describe; `null` when there is nothing to share. */
-  draft: ReportDraft | null
-  /** Whether the reader may see money on these projects, and so may show it. */
-  canShowAmounts: boolean
+  /**
+   * The statistics query the page shows; `null` until it has one. That query
+   * is what is shared, so a report always matches the page it came from.
+   */
+  query: StatisticsQuery | null
   className?: string
 }
 
 /**
- * "Share report" on a page with a period: it turns the page's filters into
- * a link anyone can open. The dialog asks only for what the filters do not
- * say - a title and whether amounts show - then hands over the link.
+ * "Share report" on a page with a period: it turns the page's own query into
+ * a link anyone can open. The dialog asks only for what the query does not
+ * say - a title and whether amounts show - then hands over the link, and
+ * says what the server decided: which projects, and whether amounts show.
  */
-export const ShareReport = ({ draft, canShowAmounts, className }: Props) => {
+export const ShareReport = ({ query, className }: Props) => {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? i18n.language
   const amountsId = useId()
   const [title, setTitle] = useState('')
   const [showAmounts, setShowAmounts] = useState(false)
 
-  const { opened, shared, pending, open, close, submit, copy } = useUnit({
+  const {
+    opened,
+    shared,
+    pending,
+    error,
+    amountsDropped,
+    projects,
+    open,
+    close,
+    submit,
+    copy,
+  } = useUnit({
     opened: $shareReportDraft,
     shared: $sharedReport,
     pending: $shareReportPending,
+    error: $shareReportError,
+    amountsDropped: $shareAmountsDropped,
+    projects: $projects,
     open: shareReportOpened,
     close: shareReportClosed,
     submit: shareReportSubmitted,
@@ -69,6 +90,11 @@ export const ShareReport = ({ draft, canShowAmounts, className }: Props) => {
   // Leaving the page closes its dialog, so the next page does not open it.
   useEffect(() => close, [close])
 
+  const draft = toReportDraft(query)
+  // A viewer never sees money, so one who views everything they have is not
+  // offered it. Anyone else may ask; the server decides for the projects the
+  // report ends up with.
+  const offersAmounts = projects.some((project) => project.role !== 'viewer')
   const days = opened ? getReportDays(opened) : null
   const period = days
     ? new Intl.DateTimeFormat(language, {
@@ -117,6 +143,17 @@ export const ShareReport = ({ draft, canShowAmounts, className }: Props) => {
       >
         {shared ? (
           <Body>
+            <Summary>
+              <SummaryPeriod>{period}</SummaryPeriod>
+              <span>
+                {t('reports.share.projects', {
+                  count: shared.projectIds.length,
+                })}
+              </span>
+            </Summary>
+            {amountsDropped ? (
+              <Note role="status">{t('reports.share.amountsDropped')}</Note>
+            ) : null}
             <Note>{t('reports.share.readyNote')}</Note>
             <Input
               label={t('reports.share.link')}
@@ -151,9 +188,11 @@ export const ShareReport = ({ draft, canShowAmounts, className }: Props) => {
             <Summary>
               <SummaryPeriod>{period}</SummaryPeriod>
               <span>
-                {t('reports.share.projects', {
-                  count: opened?.projectIds.length ?? 0,
-                })}
+                {opened?.projectIds?.length
+                  ? t('reports.share.projects', {
+                      count: opened.projectIds.length,
+                    })
+                  : t('reports.share.allProjects')}
                 {' · '}
                 {opened?.userIds?.length
                   ? t('reports.share.people', { count: opened.userIds.length })
@@ -168,7 +207,7 @@ export const ShareReport = ({ draft, canShowAmounts, className }: Props) => {
               value={title}
               onChange={(event) => setTitle(event.target.value)}
             />
-            {canShowAmounts ? (
+            {offersAmounts ? (
               <Option htmlFor={amountsId}>
                 <Checkbox
                   id={amountsId}
@@ -184,6 +223,7 @@ export const ShareReport = ({ draft, canShowAmounts, className }: Props) => {
               </Option>
             ) : null}
             <Note>{t('reports.share.note')}</Note>
+            {error ? <Failure role="alert">{error}</Failure> : null}
           </Body>
         )}
       </Modal>
@@ -241,6 +281,13 @@ const OptionHint = styled.span`
 const Note = styled.p`
   margin: 0;
   color: var(--ui-muted);
+  font-size: var(--ui-meta-size);
+  line-height: var(--ui-meta-line-height);
+`
+
+const Failure = styled.p`
+  margin: 0;
+  color: var(--red-11);
   font-size: var(--ui-meta-size);
   line-height: var(--ui-meta-line-height);
 `

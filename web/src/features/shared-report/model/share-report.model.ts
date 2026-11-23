@@ -1,5 +1,6 @@
 import {
   attach,
+  combine,
   createEffect,
   createEvent,
   createStore,
@@ -20,6 +21,7 @@ import { routes } from '@/routes'
 import {
   confirmFx,
   copyToClipboard,
+  getErrorMessage,
   navigateFx,
   showToastFx,
   translate,
@@ -46,6 +48,27 @@ export const $sharedReport = createStore<SharedReport | null>(null)
   .reset(shareReportOpened, shareReportClosed)
 
 export const $shareReportPending = shareReportMutation.$pending
+
+/**
+ * Amounts were asked for and the server left them off: the sharer only views
+ * one of the report's projects, and a viewer never shares money.
+ */
+const $amountsAsked = createStore(false)
+  .on(shareReportSubmitted, (_, { showAmounts }) => showAmounts)
+  .reset(shareReportOpened, shareReportClosed)
+
+export const $shareAmountsDropped = combine(
+  $sharedReport,
+  $amountsAsked,
+  (report, asked) => report !== null && asked && !report.showAmounts,
+)
+
+/** Why the last attempt shared nothing, in the server's words. */
+export const $shareReportError = createStore<string | null>(null)
+  .on(shareReportMutation.finished.failure, (_, { error }) =>
+    getErrorMessage(error, translate('reports.share.failed')),
+  )
+  .reset(shareReportOpened, shareReportClosed, shareReportSubmitted)
 
 sample({
   clock: shareReportSubmitted,

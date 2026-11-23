@@ -3,7 +3,7 @@ export * from './model/premium-banner'
 export {
   $dashboardCanTrack,
   $dashboardDesktopSession,
-  $dashboardFilters,
+  $dashboardStatisticsQuery,
   $dashboardProjectIds,
   $dashboardScreenshots,
   $dashboardLocations,

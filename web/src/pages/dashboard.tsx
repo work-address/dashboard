@@ -30,7 +30,7 @@ import {
   DashboardProjectsSearchInput,
   DashboardSummary,
   $dashboardCanTrack,
-  $dashboardFilters,
+  $dashboardStatisticsQuery,
   $dashboardLocations,
   $dashboardProjectIds,
   $dashboardScreenshots,
@@ -44,7 +44,7 @@ import {
   ProjectsTable,
   type ProjectsTablePeriodTotals,
 } from '@/features/projects'
-import { ShareReport, toReportDraft } from '@/features/shared-report'
+import { ShareReport } from '@/features/shared-report'
 import { TimeLocationsMap, TimeScreenshotStrip } from '@/features/time'
 import {
   Button,
@@ -78,7 +78,7 @@ export default function DashboardPage() {
     projects,
     periodRows,
     selectedProjectIds,
-    filters,
+    statisticsQuery,
     screenshots,
     screenshotsLoaded,
     locations,
@@ -96,7 +96,7 @@ export default function DashboardPage() {
     projects: $projects,
     periodRows: statisticsOverviewQuery.$data,
     selectedProjectIds: $dashboardProjectIds,
-    filters: $dashboardFilters,
+    statisticsQuery: $dashboardStatisticsQuery,
     screenshots: $dashboardScreenshots,
     screenshotsLoaded: $recentScreenshotsShown,
     locations: $dashboardLocations,
@@ -168,25 +168,6 @@ export default function DashboardPage() {
   // place is held while the projects load, so the chart does not narrow.
   const showSession = projectsLoading || canTrack
 
-  // What "Share report" would share: the period and filters as they are set.
-  const reportDraft = useMemo(
-    () =>
-      toReportDraft({
-        range: filters.range,
-        projectIds: filters.projectIds,
-        userIds: filters.userIds,
-        visibleProjectIds: projects
-          .map((project) => project.id)
-          .filter((id): id is string => Boolean(id)),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      }),
-    [filters, projects],
-  )
-  // Money is in the period's figures only for a reader who may see it.
-  const canShowAmounts = (periodRows ?? []).some(
-    (row) => row.earnedCents !== undefined,
-  )
-
   const load = useCallback(() => {
     fetchProjectsEvent()
   }, [fetchProjectsEvent])
@@ -219,10 +200,7 @@ export default function DashboardPage() {
                     <Freshness pending={periodPending} failed={periodFailed} />
                     <Scope>
                       <DashboardFilterBar />
-                      <ShareReport
-                        draft={reportDraft}
-                        canShowAmounts={canShowAmounts}
-                      />
+                      <ShareReport query={statisticsQuery} />
                     </Scope>
                   </HeaderTools>
                 )

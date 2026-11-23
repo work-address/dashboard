@@ -1,6 +1,5 @@
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsOptional,
@@ -24,17 +23,21 @@ export class SharedReportCreateDto {
   @IsString() @MaxLength(10) from: string
   @IsString() @MaxLength(10) to: string
   @IsString() @MaxLength(64) timeZone: string
+  /**
+   * Omitted or empty: every project these filters reach in the sharer's
+   * scope, fixed when the report is shared.
+   */
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(100)
   @IsUUID('all', { each: true })
-  projectIds: string[]
+  projectIds?: string[]
   /** Omitted or empty: everyone the sharer sees on those projects. */
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(100)
   @IsUUID('all', { each: true })
   userIds?: string[]
-  /** Amounts at current rates; refused to a sharer who may not see money. */
+  /** Amounts at current rates; left off for a sharer who may not see money. */
   @IsOptional() @IsBoolean() showAmounts?: boolean
 }

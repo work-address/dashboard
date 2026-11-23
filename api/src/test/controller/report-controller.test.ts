@@ -286,6 +286,85 @@ export class ReportControllerTest extends BaseControllerTest {
   }
 
   @test()
+  async everyProjectIsFixedToWhatThePageReads() {
+    const { owner, worker, colleague, project } = await this.world(false)
+    // The owner also works on a project that is someone else's.
+    const other = await this.userFixture.createPremiumUser()
+    const theirs = await this.projectFixture.createPersonal(other, 40)
+    theirs.workerAddresses = [owner.address]
+    await App.conn.manager.save(theirs)
+    const { projectIds: _named, ...everyProject } = this.draft(project)
+    const post = (sharer: User, fields: Record<string, unknown>) =>
+      this.client(sharer).post('/report', { ...everyProject, ...fields })
+
+    // No project named: every project the sharer has, as the page reads it.
+    const all = await post(owner, {})
+    expect(all.status).to.equal(200)
+    expect([...all.data.projectIds].sort()).to.deep.equal(
+      [project.id, theirs.id].sort(),
+    )
+    expect(
+      (await post(owner, { projectIds: [] })).data.projectIds,
+    ).to.have.length(2)
+
+    // With a person filter, only the projects it can apply to: the owned one.
+    // Naming both projects with that filter is refused, here as on the page.
+    const filtered = await post(owner, { userIds: [colleague.id] })
+    expect(filtered.status).to.equal(200)
+    expect(filtered.data.projectIds).to.deep.equal([project.id])
+    expect(
+      (
+        await post(owner, {
+          projectIds: [project.id, theirs.id],
+          userIds: [colleague.id],
+        })
+      ).status,
+    ).to.equal(403)
+
+    // The list is the report's from then on: a later project does not join.
+    const later = await this.projectFixture.createPersonal(owner, 10)
+    const listed = (await this.client(owner).get('/report')).data as {
+      id: string
+      projectIds: string[]
+    }[]
+    expect(
+      listed.find((report) => report.id === all.data.id)?.projectIds,
+    ).to.not.include(later.id)
+
+    // Filters that reach none of the sharer's projects share nothing.
+    const nothing = await post(worker, { userIds: [colleague.id] })
+    expect(nothing.status).to.equal(400)
+    expect(nothing.data.message).to.match(/Nothing to share/)
+  }
+
+  @test()
+  async amountsAreLeftOffAcrossAViewedProject() {
+    const { owner, project } = await this.world(false)
+    // The owner only views a second project.
+    const other = await this.userFixture.createPremiumUser()
+    const viewedProject = await this.projectFixture.createPersonal(other, 40)
+    viewedProject.viewerAddresses = [owner.address]
+    await App.conn.manager.save(viewedProject)
+    const { projectIds: _named, ...everyProject } = this.draft(project)
+
+    const mixed = await this.client(owner).post('/report', {
+      ...everyProject,
+      showAmounts: true,
+    })
+    expect(mixed.status).to.equal(200)
+    expect(mixed.data.projectIds).to.have.length(2)
+    expect(mixed.data.showAmounts).to.equal(false)
+    expect(await this.open(mixed.data.token)).to.not.have.property('amounts')
+
+    // Their own project alone keeps the amounts they asked for.
+    const own = await this.client(owner).post('/report', {
+      ...this.draft(project),
+      showAmounts: true,
+    })
+    expect(own.data.showAmounts).to.equal(true)
+  }
+
+  @test()
   async whatStatisticsWouldRefuseIsRefusedHere() {
     const { owner, worker, colleague, viewer, outsider, project } =
       await this.world(false)
@@ -301,9 +380,14 @@ export class ReportControllerTest extends BaseControllerTest {
     expect(await post(worker, { userIds: [worker.id] })).to.equal(200)
     expect(await post(owner, { userIds: [colleague.id] })).to.equal(200)
 
-    // A viewer shares time, and may not switch on money they cannot see.
+    // A viewer shares time; amounts they asked for are left off, not refused.
     expect(await post(viewer, {})).to.equal(200)
-    expect(await post(viewer, { showAmounts: true })).to.equal(403)
+    const viewed = await this.client(viewer).post('/report', {
+      ...this.draft(project),
+      showAmounts: true,
+    })
+    expect(viewed.status).to.equal(200)
+    expect(viewed.data.showAmounts).to.equal(false)
     expect(await post(worker, { showAmounts: true })).to.equal(200)
 
     // The period statistics takes, and no other.
@@ -313,9 +397,7 @@ export class ReportControllerTest extends BaseControllerTest {
     expect(await post(owner, { timeZone: 'Mars/Olympus' })).to.equal(400)
 
     // The body itself.
-    expect(await post(owner, { projectIds: [] })).to.equal(400)
     expect(await post(owner, { projectIds: ['nope'] })).to.equal(400)
-    expect(await post(owner, { projectIds: undefined })).to.equal(400)
     expect(await post(owner, { userIds: ['nope'] })).to.equal(400)
     expect(await post(owner, { title: 'x'.repeat(121) })).to.equal(400)
     expect(await post(owner, { title: '<b>March</b>' })).to.equal(400)

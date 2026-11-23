@@ -5,49 +5,32 @@ import type {
   SharedReport,
   SharedReportCreate,
 } from '@/entities/shared-report'
+import type { StatisticsQuery } from '@/entities/statistics'
 
 import { routes } from '@/routes'
-import { fromDay, toApiDateRange, toDay } from '@/shared'
+import { fromDay, toDay } from '@/shared'
 
 /** What a page offers to share: its period and filters, before a title. */
 export type ReportDraft = Omit<SharedReportCreate, 'title' | 'showAmounts'>
 
-type DraftSource = {
-  /** Reader's days, both ends included. */
-  range: { from: string; to: string }
-  /** The page's project filter; empty is every project it shows. */
-  projectIds: string[]
-  userIds?: string[]
-  /** Every project the reader may see, which an empty filter stands for. */
-  visibleProjectIds: string[]
-  timeZone: string
-}
-
 /**
- * The report a page's filters describe. "Every project" is fixed to the
- * projects there are today, so the report does not grow as projects are
- * added. Nothing to share when the reader has no project at all.
+ * The report a page's own statistics query describes: the same period and
+ * filters, without what only a chart's request carries. The server judges
+ * it by the rule it judges the page's reads by, so whatever the page shows
+ * can be shared; with no project named, the server fixes "every project".
  */
-export const toReportDraft = ({
-  range,
-  projectIds,
-  userIds,
-  visibleProjectIds,
-  timeZone,
-}: DraftSource): ReportDraft | null => {
-  const projects = projectIds.length > 0 ? projectIds : visibleProjectIds
-
-  if (projects.length === 0) {
-    return null
-  }
-
-  return {
-    ...toApiDateRange(range),
-    timeZone,
-    projectIds: projects,
-    ...(userIds?.length ? { userIds } : {}),
-  }
-}
+export const toReportDraft = (
+  query: StatisticsQuery | null | undefined,
+): ReportDraft | null =>
+  query
+    ? {
+        from: query.from,
+        to: query.to,
+        timeZone: query.timeZone,
+        ...(query.projectIds?.length ? { projectIds: query.projectIds } : {}),
+        ...(query.userIds?.length ? { userIds: query.userIds } : {}),
+      }
+    : null
 
 /** The link anyone can open, independent of the page it was made on. */
 export const getReportUrl = (origin: string, token: string): string =>

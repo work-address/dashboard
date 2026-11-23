@@ -28,8 +28,10 @@ export type SharedReportCreate = {
   from: string
   to: string
   timeZone: string
-  projectIds: string[]
+  /** Omitted: every project these filters reach, fixed by the server. */
+  projectIds?: string[]
   userIds?: string[]
+  /** Asked for; the answer's `showAmounts` says whether it was kept. */
   showAmounts?: boolean
 }
 

@@ -235,7 +235,7 @@ Added on 23 November 2026. A shared report ([SPEC.md](../SPEC.md), "A shared rep
 
 | Route | Returns | Access |
 | --- | --- | --- |
-| `POST /api/report` | Takes `{title?, from, to, timeZone, projectIds, userIds?, showAmounts?}` and answers the report as its sharer reads it back: those fields with `id`, `token`, `createdAt`, `invoiceId` and `canInvoice`. Refuses what `statistics` would refuse the same reader, and `showAmounts` when they only view one of the projects | Anyone signed in, for what they see |
+| `POST /api/report` | Takes the statistics query the sharer's page shows, `{from, to, timeZone, projectIds?, userIds?}`, with `title?` and `showAmounts?`, and answers the report as its sharer reads it back: those fields with `id`, `token`, `createdAt`, `invoiceId` and `canInvoice`. With no `projectIds` it is fixed to the projects the query reaches today, as a statistics read with the same filters would; `projectIds` in the answer is that list. Refuses what `statistics` would refuse the same reader, and a query that reaches no project (400). `showAmounts` is left off, not refused, when the sharer only views one of the projects: the answer's `showAmounts` says what was stored | Anyone signed in, for what they see |
 | `GET /api/report` | The caller's reports, newest first | The sharer |
 | `DELETE /api/report/:id` | 204, and the link stops answering | The sharer |
 | `POST /api/report/:id/invoice` | `{id}` of the invoice for the report's period on its one project, made by the invoice's own range rules; the same id however often it is asked. 400 unless `canInvoice`: one project, no invoice yet, and the sharer's own time, which a worker's report always is and an owner's only when it names them alone | The sharer |

@@ -38,14 +38,36 @@ export class SharedReportManager {
   @inject('StatisticsManager') protected statistics: StatisticsManager
 
   /**
-   * Shares a span of what the sharer sees. Whatever statistics would refuse
-   * this reader is refused here, and amounts are refused to a sharer who may
-   * not see money on one of the projects.
+   * Shares a span of what the sharer sees, as the page they share from reads
+   * it: the same query, judged by the same rule, so whatever the page can
+   * read can be shared and nothing else. With no project named, the report
+   * is fixed to the projects the query reaches today; later ones do not join
+   * it. Amounts are left off, not refused, when the sharer may not see money
+   * on one of the projects: the answer says which was stored.
    */
   public async create(
     data: SharedReportCreateDto,
     sharer: User,
   ): Promise<ISharedReportView> {
+    const projectIds = [...new Set(data.projectIds ?? [])]
+    const userIds = [...new Set(data.userIds ?? [])]
+    const scope = await this.statistics.scope(
+      {
+        from: data.from,
+        to: data.to,
+        timeZone: data.timeZone,
+        userIds,
+        ...(projectIds.length ? { projectIds } : {}),
+      },
+      sharer,
+    )
+
+    if (!scope.projects.length) {
+      throw new BadRequestError(
+        'Nothing to share: these filters reach none of your projects',
+      )
+    }
+
     const report = Object.assign(new SharedReport(), {
       userId: sharer.id,
       token: randomBytes(32).toString('base64url'),
@@ -53,21 +75,11 @@ export class SharedReportManager {
       from: data.from,
       to: data.to,
       timeZone: data.timeZone,
-      projectIds: [...new Set(data.projectIds)],
-      userIds: [...new Set(data.userIds ?? [])],
-      showAmounts: data.showAmounts === true,
+      projectIds: scope.projects.map((project) => project.id),
+      userIds,
+      showAmounts: data.showAmounts === true && scope.viewers.length === 0,
       invoiceId: null,
     })
-    const scope = await this.statistics.scope(
-      SharedReportManager.query(report),
-      sharer,
-    )
-
-    if (report.showAmounts && scope.viewers.length) {
-      throw new AccessException(
-        'Amounts can be shared only for projects you own or work on',
-      )
-    }
 
     return this.view(
       await runPromise(this.reports.saveSingle(report)),

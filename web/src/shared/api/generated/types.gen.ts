@@ -259,7 +259,7 @@ export type SharedReportCreateDto = {
     from: string;
     to: string;
     timeZone: string;
-    projectIds: Array<string>;
+    projectIds?: Array<string>;
     userIds?: Array<string>;
     showAmounts?: boolean;
 };

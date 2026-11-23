@@ -123,7 +123,7 @@ function reportDraft(body: Record<string, unknown>) {
     !day(to) ||
     typeof timeZone !== 'string' ||
     timeZone.length > 64 ||
-    !ids(projectIds, 1) ||
+    !(projectIds == null || ids(projectIds, 0)) ||
     !(userIds == null || ids(userIds, 0)) ||
     !(showAmounts == null || typeof showAmounts === 'boolean')
   ) {
@@ -135,16 +135,17 @@ function reportDraft(body: Record<string, unknown>) {
     from,
     to,
     timeZone,
-    projectIds: [...new Set(projectIds)],
+    projectIds: [...new Set(projectIds ?? [])],
     userIds: [...new Set(userIds ?? [])],
     showAmounts: showAmounts === true,
   }
 }
 
 /**
- * Shares a span of what the sharer sees. Whatever statistics would refuse
- * this reader is refused here, and amounts are refused to a sharer who may
- * not see money on one of the projects.
+ * Shares a span of what the sharer sees, as the page they share from reads
+ * it. With no project named, the report is fixed to the projects the query
+ * reaches today. Amounts are left off, not refused, when the sharer may not
+ * see money on one of the projects.
  */
 export function shareReport(
   db: Db,
@@ -153,12 +154,18 @@ export function shareReport(
   now = Date.now(),
 ) {
   const draft = reportDraft(body)
-  const scope = statisticsScope(db, meId, queryOf(draft), now)
+  const { projectIds, ...filters } = queryOf(draft)
+  const scope = statisticsScope(
+    db,
+    meId,
+    { ...filters, ...(projectIds?.length ? { projectIds } : {}) },
+    now,
+  )
 
-  if (draft.showAmounts && scope.viewers.size > 0) {
+  if (scope.projects.length === 0) {
     throw new DemoHttpError(
-      403,
-      'Access error: Amounts can be shared only for projects you own or work on',
+      400,
+      'Nothing to share: these filters reach none of your projects',
     )
   }
 
@@ -166,6 +173,8 @@ export function shareReport(
     db,
     saveRow<MockReport>('reports', {
       ...draft,
+      projectIds: scope.projects.map((project) => project.id),
+      showAmounts: draft.showAmounts && scope.viewers.size === 0,
       id: crypto.randomUUID(),
       createdAt: new Date(now).toISOString(),
       userId: meId,

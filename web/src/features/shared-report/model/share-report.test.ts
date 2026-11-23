@@ -7,31 +7,34 @@ import {
   toReportDraft,
 } from './share-report'
 
-const source = {
-  range: { from: '2026-11-16', to: '2026-11-22' },
-  projectIds: [],
-  visibleProjectIds: ['a', 'b'],
+const query = {
+  from: '2026-11-16',
+  to: '2026-11-23',
   timeZone: 'Europe/Madrid',
 }
 
 describe('report draft', () => {
-  it('fixes "every project" to the projects there are today', () => {
-    expect(toReportDraft(source)).toEqual({
-      from: '2026-11-16',
-      to: '2026-11-23',
-      timeZone: 'Europe/Madrid',
-      projectIds: ['a', 'b'],
-    })
+  it('shares the page’s query, naming no project for "every project"', () => {
+    expect(toReportDraft(query)).toEqual(query)
+    expect(toReportDraft({ ...query, projectIds: [], userIds: [] })).toEqual(
+      query,
+    )
   })
 
   it('keeps the page filters when they are set', () => {
     expect(
-      toReportDraft({ ...source, projectIds: ['b'], userIds: ['me'] }),
-    ).toMatchObject({ projectIds: ['b'], userIds: ['me'] })
+      toReportDraft({ ...query, projectIds: ['b'], userIds: ['me'] }),
+    ).toEqual({ ...query, projectIds: ['b'], userIds: ['me'] })
   })
 
-  it('has nothing to share without a project', () => {
-    expect(toReportDraft({ ...source, visibleProjectIds: [] })).toBeNull()
+  it('leaves out what only a chart’s request carries', () => {
+    expect(
+      toReportDraft({ ...query, bucket: 'hour', agentIds: ['a'] }),
+    ).toEqual(query)
+  })
+
+  it('has nothing to share before the page has a query', () => {
+    expect(toReportDraft(null)).toBeNull()
   })
 })
 

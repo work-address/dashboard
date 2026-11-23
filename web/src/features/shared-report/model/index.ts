@@ -6,7 +6,9 @@ export {
   type ReportDraft,
 } from './share-report'
 export {
+  $shareAmountsDropped,
   $shareReportDraft,
+  $shareReportError,
   $shareReportPending,
   $sharedReport,
   reportLinkCopyRequested,

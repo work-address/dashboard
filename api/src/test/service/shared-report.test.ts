@@ -170,14 +170,15 @@ export class SharedReportTest extends AbstractDatabaseIntegration {
       [sharer.id, colleague.id].sort(),
     )
 
-    // Money needs every project: asked for, it stays out while one is viewed.
-    let refused: unknown
-    try {
-      await this.share(sharer, [owned, viewed], { showAmounts: true })
-    } catch (error) {
-      refused = error
-    }
-    expect(refused).to.include({ httpCode: 403 })
+    // Money needs every project: asked for, it is left off while one is
+    // viewed, and the report says so.
+    const mixed = await this.share(sharer, [owned, viewed], {
+      showAmounts: true,
+    })
+    expect(mixed.showAmounts).to.equal(false)
+    expect(await this.reports.readPublic(mixed.token)).to.not.have.property(
+      'amounts',
+    )
     const priced = await this.reports.readPublic(
       (await this.share(sharer, [owned, worked], { showAmounts: true })).token,
     )

@@ -1228,10 +1228,11 @@ export const CONTRACT_SCENARIOS: ContractScenario[] = [
     check: (body) => viewIs(body, { canInvoice: false }),
   },
   {
-    name: 'a viewer cannot share amounts',
+    name: 'a viewer’s report leaves off the amounts they asked for',
     as: 'viewer',
     request: (w) => share({ projectIds: [w.project], showAmounts: true }),
-    status: 403,
+    status: 200,
+    check: (body) => viewIs(body, { showAmounts: false, canInvoice: false }),
   },
   {
     name: 'a viewer cannot share one person’s time',
@@ -1264,9 +1265,30 @@ export const CONTRACT_SCENARIOS: ContractScenario[] = [
     status: 400,
   },
   {
-    name: 'a report needs a project',
+    name: 'a report that names no project takes every project its sharer reads',
     as: 'owner',
     request: () => share({ projectIds: [] }),
+    status: 200,
+    check: (body, w) =>
+      (body as { projectIds: string[] }).projectIds.includes(w.project)
+        ? undefined
+        : 'the owner’s project is not in the report',
+  },
+  {
+    name: 'with a person filter, every project means the ones it applies to',
+    as: 'owner',
+    request: (w) => share({ userIds: [w.workerId] }),
+    status: 200,
+    check: (body, w) =>
+      viewIs(body, { userIds: [w.workerId] }) ??
+      ((body as { projectIds: string[] }).projectIds.includes(w.project)
+        ? undefined
+        : 'the owner’s project is not in the report'),
+  },
+  {
+    name: 'filters that reach none of the sharer’s projects share nothing',
+    as: 'worker',
+    request: (w) => share({ userIds: [w.ownerId] }),
     status: 400,
   },
   {

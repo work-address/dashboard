@@ -221,7 +221,7 @@
           "lines"
         ],
         "example": {
-          "id": "c788ac48-cf51-4887-ac07-4dcc7d0d571f"
+          "id": "22e052e6-e34f-4a38-bb60-1ec57fe451e2"
         }
       },
       "ProjectStatistics": {
@@ -282,7 +282,7 @@
           "period"
         ],
         "example": {
-          "id": "72d79291-1983-4812-bacb-7106c13e8f46"
+          "id": "a3767bc8-4fd9-499a-b897-141469002448"
         }
       },
       "Time": {
@@ -475,7 +475,7 @@
           "toAt"
         ],
         "example": {
-          "id": "a6c43db5-8def-4e3f-a3a7-2129fc08a5d2"
+          "id": "8cd10e41-940e-422b-a096-0d6a68cd41c9"
         }
       },
       "Project": {
@@ -606,7 +606,7 @@
           "state"
         ],
         "example": {
-          "id": "5fd8057c-8821-4d56-8bb6-087f88635272"
+          "id": "300df9e5-2113-4763-b63f-57305ac29038"
         }
       },
       "User": {
@@ -729,7 +729,7 @@
         },
         "type": "object",
         "example": {
-          "id": "cccc97f2-2c77-43ec-be07-d686f75b2007"
+          "id": "6a5ee253-98ca-4617-982b-63318d6bc633"
         }
       },
       "AdminUserSearchFilterDto": {
@@ -1188,8 +1188,7 @@
               "type": "string"
             },
             "type": "array",
-            "maxItems": 100,
-            "minItems": 1
+            "maxItems": 100
           },
           "userIds": {
             "items": {
@@ -1207,8 +1206,7 @@
         "required": [
           "from",
           "to",
-          "timeZone",
-          "projectIds"
+          "timeZone"
         ]
       },
       "AuthForgotPasswordDto": {
@@ -5529,7 +5527,7 @@
               },
               "example": {
                 "filter": {
-                  "projectId": "9d957dc0-2680-4d4b-be03-1c959b94ce45"
+                  "projectId": "25772fd0-6e17-4261-b8da-6002f14fc0df"
                 },
                 "sort": {
                   "fromAt": "DESC"
@@ -5597,8 +5595,8 @@
                 "$ref": "#/components/schemas/InvoiceCreateDto"
               },
               "example": {
-                "fromUnix": 1795356440336,
-                "toUnix": 1795442840336
+                "fromUnix": 1795375283651,
+                "toUnix": 1795461683651
               }
             }
           },
@@ -5991,7 +5989,7 @@
           "content": {
             "application/json": {
               "example": {
-                "nonce": "ced99453-3877-42ae-918a-86d1d00088f1"
+                "nonce": "96c36370-19c5-4b95-a6c1-e11016154a8f"
               },
               "schema": {
                 "properties": {
@@ -6036,7 +6034,7 @@
           "content": {
             "application/json": {
               "example": {
-                "nonce": "5e3e7de7-40e5-44b4-8eb3-9b083ae10b2e"
+                "nonce": "4805edf1-dacb-4de6-9638-3a5e84e8cf6d"
               },
               "schema": {
                 "properties": {
@@ -6077,21 +6075,21 @@
                 "examples": {
                   "init": {
                     "value": {
-                      "nonce": "6a0b3a30-fa68-4998-8a90-7e770d55b8bc",
+                      "nonce": "483db60a-215c-4415-a7d2-21fde2795579",
                       "ip": "127.0.0.1",
                       "state": "Initialization"
                     }
                   },
                   "login": {
                     "value": {
-                      "nonce": "0ad87eb6-2b6d-480b-8cda-64a9e822372f",
+                      "nonce": "0c0d3811-f268-4305-9f86-b2bb8274b2b4",
                       "ip": "127.0.0.1",
                       "state": "Login"
                     }
                   },
                   "connected": {
                     "value": {
-                      "nonce": "d4001944-0ff7-455d-bd3f-fc657dc801bc",
+                      "nonce": "be016c22-dc9e-481f-b242-8af308179015",
                       "ip": "127.0.0.1",
                       "state": "Connected",
                       "jwt": {
