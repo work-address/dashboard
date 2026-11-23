@@ -215,7 +215,7 @@ export type Db = {
   /** Empty until the visitor sets one up: the seed's agents are its runs' products. */
   agents: MockAgent[]
   credentials: MockCredential[]
-  /** Empty until the visitor shares one. */
+  /** What the visitor has shared; a world opens with a few (`seed-reports.ts`). */
   reports: MockReport[]
   /**
    * What a free owner's plan no longer shows, set aside by `settleHistory`

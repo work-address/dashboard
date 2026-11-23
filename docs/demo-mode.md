@@ -56,6 +56,8 @@ A "Demo" pill in the bottom-left corner, above the app, expands into:
 
 The demo's own user tracks on at most three projects, so their figures stay within a day's hours; the team works across every active project. Every non-empty world has agents beside most stretches of work, with prompts and held prompts; screenshots and app usage, with some projects tracking them off; entries still inside their review window; invoices requested, paid and rejected; manual and web time; an agent run in progress.
 
+Every non-empty world also opens with shared reports on the Reports page, one of each kind: everything the visitor sees for a week, one project for four weeks with its amounts, their own week still to invoice, and a week an invoice was made from. A viewer gets the first two, without amounts. Each is kept as sharing it would keep it, their links stay the same from day to day, and their periods move with today (`web/src/shared/mock/seed-reports.ts`).
+
 For each role the projects are: **Owner** owns all; **Worker** works on projects others own; **Viewer** only views others' projects; **Mixed** owns some and works on others.
 
 ## What the mock answers

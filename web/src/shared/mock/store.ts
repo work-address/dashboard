@@ -4,10 +4,11 @@
  * until Reset (docs/demo-mode.md).
  *
  * Time, invoices and runs are regenerated relative to each new day, so edits
- * to them last until midnight; edits to projects and the profile last until
- * Reset.
+ * to them last until midnight; edits to projects, the profile and shared
+ * reports last until Reset.
  */
 import { buildDb, type Db } from './db'
+import { seedReports } from './seed-reports'
 import { demoDataKey, readDemoSettings } from './settings'
 
 type Collection =
@@ -99,7 +100,11 @@ export function demoDb(now = Date.now()): Db {
   if (!db) {
     const day = todayKey(now)
     overrides = readOverrides(day)
-    db = apply(buildDb(readDemoSettings(), now), overrides)
+    const settings = readDemoSettings()
+    const world = buildDb(settings, now)
+    // Reports are shared from the finished world, so they are added to it.
+    world.reports = seedReports(world, settings, now)
+    db = apply(world, overrides)
   }
   return db
 }
