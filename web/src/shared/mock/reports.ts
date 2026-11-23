@@ -238,7 +238,8 @@ export function openReport(db: Db, token: string, now = Date.now()) {
 
   return {
     title: report.title,
-    sharedBy: sharer.name || sharer.address,
+    // Never an address, as the API has it: anyone may read this.
+    sharedBy: sharer.name || '',
     from: report.from,
     to: report.to,
     timeZone: report.timeZone,

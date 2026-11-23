@@ -137,9 +137,23 @@ sample({
   target: showToastFx,
 })
 
+// Issuing an invoice locks the hours it bills, so one click only asks.
+const confirmInvoiceFx = attach({
+  effect: confirmFx,
+  mapParams: ({ summary }: { report: SharedReport; summary: string }) => ({
+    title: translate('reports.invoiceConfirm.title'),
+    description: summary,
+    confirmLabel: translate('reports.createInvoice'),
+    cancelLabel: translate('common.cancel'),
+    tone: 'primary' as const,
+  }),
+})
+
+sample({ clock: invoiceReportRequested, target: confirmInvoiceFx })
+
 sample({
-  clock: invoiceReportRequested,
-  fn: (report) => report.id,
+  clock: confirmInvoiceFx.done,
+  fn: ({ params }) => params.report.id,
   target: invoiceSharedReportMutation.start,
 })
 

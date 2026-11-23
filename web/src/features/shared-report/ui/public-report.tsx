@@ -34,7 +34,13 @@ export const PublicReport = ({ report }: Props) => {
   const language = i18n.resolvedLanguage ?? i18n.language
 
   const view = useMemo(() => {
-    const totals = getPublicReportTotals(report, t('agents.charts.unnamed'))
+    const totals = getPublicReportTotals(report, {
+      agent: t('agents.charts.unnamed'),
+      person: (number) =>
+        number === null
+          ? t('report.contributor')
+          : t('report.contributorNumbered', { number }),
+    })
     const shared = { period: getReportDays(report), language }
     // A report's rows always come by day, however short its period.
     const byProject = periodBars({
@@ -125,7 +131,9 @@ export const PublicReport = ({ report }: Props) => {
           <Lead>
             {period}
             {' · '}
-            {t('report.sharedBy', { name: report.sharedBy })}
+            {report.sharedBy
+              ? t('report.sharedBy', { name: report.sharedBy })
+              : t('report.sharedByNobody')}
           </Lead>
         </Heading>
         <Print variant="outline" color="neutral" onClick={() => window.print()}>

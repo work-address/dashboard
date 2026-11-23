@@ -394,8 +394,21 @@ const reportIs = (
     [...REPORT_KEYS, ...(expected.amounts ? ['amounts'] : [])].sort(),
   )
   if (keys) return keys
-  if (typeof body.sharedBy !== 'string' || !body.sharedBy)
-    return `sharedBy is ${JSON.stringify(body.sharedBy)}`
+  // Anyone may read this, so nobody in it is named by an address: an email,
+  // a wallet, or what either adapter's fixtures use for one. Someone who has
+  // set no name is nameless here.
+  const shownNames = [
+    body.sharedBy,
+    ...((body.people as { name: unknown }[] | undefined) ?? []).map(
+      (person) => person.name,
+    ),
+  ]
+  const exposed = shownNames.find(
+    (name) =>
+      typeof name !== 'string' || /@|^0x[0-9a-fA-F]{40}$|^address-/.test(name),
+  )
+  if (exposed !== undefined)
+    return `a name on the report is ${JSON.stringify(exposed)}`
   const projects = rowsAre(
     'projects',
     (body.projects as { id: string }[]).map((project) => project.id),

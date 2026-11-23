@@ -396,9 +396,11 @@ export class StatisticsManager {
         .sort(
           (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
         ),
+      // Read by anyone with the link, so nobody is named by an address.
       ...(await this.named(
         agentsDaily,
         daily.flatMap((row) => (row.userId ? [row.userId] : [])),
+        true,
       )),
       daily,
       agentsDaily,
@@ -417,13 +419,17 @@ export class StatisticsManager {
   private async named(
     agentRows: { userId: string; agentId: string }[],
     otherPeople: string[] = [],
+    forAnyone = false,
   ): Promise<{
     people: { id: string; name: string }[]
     agents: { id: string; name: string; userId: string }[]
   }> {
     const runners = [...new Set(agentRows.map((row) => row.userId))]
     const [people, agentNames] = await Promise.all([
-      this.repository.personNames([...new Set([...otherPeople, ...runners])]),
+      this.repository.personNames(
+        [...new Set([...otherPeople, ...runners])],
+        forAnyone,
+      ),
       this.agents.names(runners),
     ])
     const agents = new Map(

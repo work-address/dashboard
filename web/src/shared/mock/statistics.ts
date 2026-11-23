@@ -577,6 +577,8 @@ function named(
   agentRows: { userId: string; agentId: string }[],
   runs: { agentId: string; product: string }[],
   otherPeople: string[] = [],
+  /** For a reader with no session: nobody is named by an address. */
+  forAnyone = false,
 ) {
   const byName = (
     a: { name: string; id: string },
@@ -600,7 +602,10 @@ function named(
       .map((id) => {
         const user = userOf(db, id)
 
-        return { id, name: user?.name || user?.address || id }
+        return {
+          id,
+          name: user?.name || (forAnyone ? '' : user?.address || id),
+        }
       })
       .sort(byName),
     agents: [...agents.values()].sort(byName),
@@ -771,6 +776,7 @@ export function sharedFigures(scope: Scope, withAmounts: boolean) {
       agentsDaily,
       runs,
       daily.flatMap((row) => (row.userId ? [row.userId] : [])),
+      true,
     ),
     daily,
     agentsDaily,

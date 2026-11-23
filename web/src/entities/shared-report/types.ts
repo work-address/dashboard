@@ -38,14 +38,17 @@ export type SharedReportCreate = {
 /** What anyone with the link is shown. Money is present only when the sharer switched it on. */
 export type PublicReport = {
   title: string | null
-  /** The sharer's name. */
+  /** The sharer's name; empty when they have set none, never an address. */
   sharedBy: string
   from: string
   to: string
   timeZone: string
   createdAt: string
   projects: { id: string; title: string }[]
-  /** Named only when the sharer may see time split by person. */
+  /**
+   * Present only when the sharer may see time split by person. A name is
+   * empty for someone who has set none: a report names nobody by an address.
+   */
   people: { id: string; name: string }[]
   agents: { id: string; name: string; userId: string }[]
   daily: {

@@ -103,7 +103,18 @@ export const SharedReportsList = ({ reports, projectTitles }: Props) => {
                   iconLeft={
                     <FileTextIcon width={ICON_SIZE} height={ICON_SIZE} />
                   }
-                  onClick={() => invoice(report)}
+                  onClick={() =>
+                    invoice({
+                      report,
+                      summary: t('reports.invoiceConfirm.description', {
+                        project: projects,
+                        period: dayRange.formatRange(
+                          fromDay(days.from),
+                          fromDay(days.to),
+                        ),
+                      }),
+                    })
+                  }
                 >
                   {t('reports.createInvoice')}
                 </Button>

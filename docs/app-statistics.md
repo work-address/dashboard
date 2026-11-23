@@ -227,6 +227,8 @@ All routes are new contracts with the `/api` prefix. Each takes `{projectIds, fr
 
 The agent runs table reuses the agent plan's `POST /api/agent-tracking/search`. `GET /api/project/:id/stats/:period` is removed with the cache.
 
+A shared report names nobody by an address, since anyone with the link reads it and an address is an email or a wallet: `sharedBy` and a person's `name` are empty for someone who has set no name, and the page calls them "Contributor". The limit on opening links (`SharedReportLimit`, 60 at once per address) is counted in the server's memory. That is right for the single API process production runs; before a second process is added it has to move to Redis, or each process will count on its own.
+
 `agents/daily` also names what its rows are about, so a reader needs no second source: `agents` (`id`, `name`, `userId`) for every agent in `daily`, as its worker named it, and `people` (`id`, `name`) for the workers who run them. An agent that was detached or removed keeps its name; the name is empty only when the worker's list no longer holds the agent. One lookup, `AgentRepository.names`, is behind the name on a run, in these rows and on a shared report.
 
 `overview` and `agents/daily` also say when a plan hides part of the period asked for: `hiddenBefore`, an ISO instant, and `canUpgrade`, true when the reader owns a project that hides it. The limit is each project owner's (`Plan.keptFrom`); the latest one the period reaches past is reported. Both fields are absent when nothing is hidden, and on a read by `invoiceId`, since an invoice keeps what it covers. `overview` rows carry `invoicedSeconds` and `invoicedUnpaidSeconds` for owners and workers.

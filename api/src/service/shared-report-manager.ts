@@ -183,7 +183,8 @@ export class SharedReportManager {
 
     return {
       title: report.title,
-      sharedBy: report.user.name || report.user.address,
+      // Never an address: it is an email or a wallet, and anyone may read this.
+      sharedBy: report.user.name || '',
       from: report.from,
       to: report.to,
       timeZone: report.timeZone,

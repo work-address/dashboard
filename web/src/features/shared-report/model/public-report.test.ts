@@ -37,8 +37,14 @@ const report: PublicReport = {
   ],
 }
 
+const labels = {
+  agent: 'Agent',
+  person: (number: number | null) =>
+    number === null ? 'Contributor' : `Contributor ${number}`,
+}
+
 describe('public report totals', () => {
-  const totals = getPublicReportTotals(report, 'Agent')
+  const totals = getPublicReportTotals(report, labels)
 
   it('keeps people and agents apart', () => {
     expect(totals.peopleSeconds).toBe(12_600)
@@ -68,10 +74,54 @@ describe('public report totals', () => {
         agentsDaily: [],
         daily: report.daily.map(({ userId: _userId, ...row }) => row),
       },
-      'Agent',
+      labels,
     )
 
     expect(viewed.people).toEqual([])
     expect(viewed.peopleSeconds).toBe(12_600)
+  })
+})
+
+describe('people with no name', () => {
+  const nameless = (ids: string[]): PublicReport => ({
+    ...report,
+    people: [
+      ...ids.map((id) => ({ id, name: '' })),
+      { id: 'ada', name: 'Ada' },
+    ],
+    agents: [{ id: 'one', name: 'Builder', userId: ids[0] }],
+    daily: [
+      ...ids.map((id) => ({
+        day: '2026-11-16',
+        projectId: 'a',
+        userId: id,
+        trackedSeconds: 600,
+      })),
+      { day: '2026-11-16', projectId: 'a', userId: 'ada', trackedSeconds: 60 },
+    ],
+    agentsDaily: [
+      {
+        day: '2026-11-16',
+        projectId: 'a',
+        userId: ids[0],
+        agentId: 'one',
+        workedSeconds: 60,
+      },
+    ],
+  })
+
+  it('reads one of them as a contributor, never as an address', () => {
+    const totals = getPublicReportTotals(nameless(['x']), labels)
+
+    expect(totals.people.map((row) => row.name)).toEqual(['Contributor', 'Ada'])
+    expect(totals.agents[0].owner).toBe('Contributor')
+  })
+
+  it('counts several of them off, the same way each time', () => {
+    const totals = getPublicReportTotals(nameless(['y', 'x']), labels)
+
+    expect(
+      Object.fromEntries(totals.people.map((row) => [row.id, row.name])),
+    ).toEqual({ x: 'Contributor 1', y: 'Contributor 2', ada: 'Ada' })
   })
 })

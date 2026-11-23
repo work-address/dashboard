@@ -134,6 +134,12 @@ export type ConfirmProps = {
   description?: string
   confirmLabel?: string
   cancelLabel?: string
+  /**
+   * What confirming does. Most questions guard something that cannot be
+   * undone and read as a warning; `primary` is for one that only asks before
+   * going ahead, such as issuing an invoice.
+   */
+  tone?: 'danger' | 'primary'
   onConfirm?: () => void | Promise<void>
   onCancel?: () => void | Promise<void>
 }

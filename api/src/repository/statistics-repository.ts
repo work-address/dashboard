@@ -288,7 +288,15 @@ export class StatisticsRepository {
   }
 
   /** How the team report names people it found through their agents alone. */
-  public async personNames(userIds: string[]): Promise<Map<string, string>> {
+  public async personNames(
+    userIds: string[],
+    /**
+     * For a reader with no session, as a shared report's is. An address is an
+     * email or a wallet, so someone with no name stays nameless there; inside
+     * the app, where the reader already sees addresses, it stands in.
+     */
+    forAnyone = false,
+  ): Promise<Map<string, string>> {
     if (!userIds.length) return new Map()
     const users = await getDataSource()
       .getRepository(User)
@@ -296,7 +304,9 @@ export class StatisticsRepository {
         where: { id: In(userIds) },
         select: { id: true, name: true, address: true },
       })
-    return new Map(users.map((u) => [u.id, u.name || u.address]))
+    return new Map(
+      users.map((u) => [u.id, u.name || (forAnyone ? '' : u.address)]),
+    )
   }
 
   public gaps(scope: StatisticsScope) {

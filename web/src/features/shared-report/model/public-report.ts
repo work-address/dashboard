@@ -18,6 +18,17 @@ const ranked = <Row extends PublicReportRow>(rows: Row[]): Row[] =>
     .filter((row) => row.seconds > 0)
     .sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name))
 
+/** What the page calls those the report has no name for. */
+export type PublicReportLabels = {
+  /** An agent its worker's list no longer holds. */
+  agent: string
+  /**
+   * Someone who has set no name. A report never names anyone by an address,
+   * so they are counted off instead: `null` when there is only one of them.
+   */
+  person: (number: number | null) => string
+}
+
 /**
  * The report's totals: by project, and by person and agent where the sharer
  * may see that split. A project counts people's time only, as every project
@@ -25,7 +36,7 @@ const ranked = <Row extends PublicReportRow>(rows: Row[]): Row[] =>
  */
 export const getPublicReportTotals = (
   report: PublicReport,
-  unnamed: string,
+  labels: PublicReportLabels,
 ): PublicReportTotals => {
   const add = (map: Map<string, number>, id: string, seconds: number) =>
     map.set(id, (map.get(id) ?? 0) + seconds)
@@ -44,8 +55,20 @@ export const getPublicReportTotals = (
     add(byAgent, row.agentId, row.workedSeconds)
   }
 
+  // Nameless people are numbered in a fixed order, so the same person keeps
+  // the same label each time the report is opened.
+  const nameless = report.people
+    .filter((person) => !person.name)
+    .map((person) => person.id)
+    .sort()
   const people = new Map(
-    report.people.map((person) => [person.id, person.name]),
+    report.people.map((person) => [
+      person.id,
+      person.name ||
+        labels.person(
+          nameless.length > 1 ? nameless.indexOf(person.id) + 1 : null,
+        ),
+    ]),
   )
   const sum = (map: Map<string, number>) =>
     [...map.values()].reduce((total, seconds) => total + seconds, 0)
@@ -63,14 +86,14 @@ export const getPublicReportTotals = (
     people: ranked(
       report.people.map((person) => ({
         id: person.id,
-        name: person.name,
+        name: people.get(person.id) ?? '',
         seconds: byPerson.get(person.id) ?? 0,
       })),
     ),
     agents: ranked(
       report.agents.map((agent) => ({
         id: agent.id,
-        name: agent.name || unnamed,
+        name: agent.name || labels.agent,
         seconds: byAgent.get(agent.id) ?? 0,
         owner: people.get(agent.userId) ?? null,
       })),

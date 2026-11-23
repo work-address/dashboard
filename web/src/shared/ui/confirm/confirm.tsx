@@ -61,7 +61,10 @@ export const Confirm = () => {
                 >
                   {entry.props.cancelLabel}
                 </Button>
-                <Button color="danger" onClick={() => confirmedEvent(entry.id)}>
+                <Button
+                  color={entry.props.tone === 'primary' ? 'primary' : 'danger'}
+                  onClick={() => confirmedEvent(entry.id)}
+                >
                   {entry.props.confirmLabel}
                 </Button>
               </Flex>

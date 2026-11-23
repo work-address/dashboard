@@ -21,6 +21,7 @@ export {
 export { invoiceReportRequested } from './shared-reports.events'
 export {
   getPublicReportTotals,
+  type PublicReportLabels,
   type PublicReportRow,
   type PublicReportTotals,
 } from './public-report'

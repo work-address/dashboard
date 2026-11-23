@@ -415,7 +415,8 @@ export class ReportControllerTest extends BaseControllerTest {
 
     expect(report).to.deep.include({
       title: 'Sprint 12',
-      sharedBy: owner.name || owner.address,
+      // The owner has set no name, and an address is never shown to anyone.
+      sharedBy: '',
       from: day(-3),
       to: day(1),
       timeZone: 'UTC',
@@ -470,9 +471,9 @@ export class ReportControllerTest extends BaseControllerTest {
       [...report.people].sort((a, b) => a.id.localeCompare(b.id)),
     ).to.deep.equal(
       [
-        { id: owner.id, name: owner.address },
+        { id: owner.id, name: '' },
         { id: worker.id, name: 'Wanda Worker' },
-        { id: colleague.id, name: colleague.address },
+        { id: colleague.id, name: '' },
       ].sort((a, b) => a.id.localeCompare(b.id)),
     )
     expect(report.agents).to.deep.equal([
