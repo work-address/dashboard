@@ -25,7 +25,7 @@ import {
   type RecentTimeParams,
 } from '@/entities/time'
 import {
-  bucketSizeFor,
+  askGrain,
   DEFAULT_DATE_RANGE_PRESET,
   fromDay,
   hasFix,
@@ -135,7 +135,7 @@ const toStatisticsQuery = ({
   ...(projectIds.length > 0 ? { projectIds } : {}),
   ...(userIds.length > 0 ? { userIds } : {}),
   // A day or two is drawn by the hour; anything longer by the day.
-  ...(bucketSizeFor(range) === 'hour' ? { bucket: 'hour' as const } : {}),
+  ...(askGrain(range) === 'hour' ? { bucket: 'hour' as const } : {}),
 })
 
 export const $dashboardStatisticsQuery =

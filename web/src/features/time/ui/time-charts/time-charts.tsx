@@ -7,7 +7,6 @@ import {
   $timeChartsMode,
   getTimeBilling,
   getTimeChartsRange,
-  getTimeProjectShares,
   getTimeWeek,
   getTimeWeekAnchor,
   timeChartsModeChanged,
@@ -18,19 +17,20 @@ import { TimeChartsBilling } from './time-charts-billing'
 import { TimeChartsDaily } from './time-charts-daily'
 import { TimeChartsShare } from './time-charts-share'
 
-import { $projects } from '@/entities/projects'
+import { $projects, projectSeriesNames } from '@/entities/projects'
 import {
+  agentWorkedSeconds,
   statisticsPeriodAgentsQuery,
   statisticsPeriodDailyQuery,
   statisticsPeriodOverviewQuery,
 } from '@/entities/statistics'
 import { $timeFilters } from '@/entities/time'
 import {
-  OTHER_SERIES_KEY,
-  projectSeries,
+  askGrain,
+  periodBars,
+  ranked,
   weekStartsOnFor,
   WorkspaceHiddenHistory,
-  type ShareListRow,
 } from '@/shared'
 
 /**
@@ -99,46 +99,70 @@ export const TimeCharts = () => {
     retry()
   }, [retry])
 
-  const view = useMemo(() => {
-    const totals = overview?.totals ?? []
-    const shares = getTimeProjectShares(totals)
-    const { keyOf, series } = projectSeries(
-      projects,
-      new Map(shares.map((share) => [share.projectId, share.seconds])),
-      t('dashboard.charts.other'),
-    )
-    const colors = new Map(series.map((item) => [item.key, item.color]))
-    const titles = new Map(projects.map((item) => [item.id, item.title]))
-    const rows = new Map<string, ShareListRow>()
+  const grain = askGrain(range)
+  // Hours by project: the bars' default split, and the share list's rows.
+  const byProject = useMemo(
+    () =>
+      periodBars({
+        period: range,
+        language,
+        sources: [
+          {
+            rows: daily,
+            grain,
+            values: (row) => ({ [row.projectId]: row.trackedSeconds / 3600 }),
+          },
+        ],
+        series: ranked(
+          projectSeriesNames(projects),
+          t('dashboard.charts.other'),
+        ),
+      }),
+    [daily, grain, language, projects, range, t],
+  )
+  // People beside their agents, never added: an agent often runs while its
+  // person is tracking.
+  const byKind = useMemo(
+    () =>
+      periodBars({
+        period: range,
+        language,
+        sources: [
+          {
+            rows: daily,
+            grain,
+            values: (row) => ({ people: row.trackedSeconds / 3600 }),
+          },
+          {
+            rows: agents?.daily,
+            grain,
+            values: (row) => ({ agents: agentWorkedSeconds(row) / 3600 }),
+          },
+        ],
+        series: [
+          {
+            key: 'people',
+            label: t('dashboard.agents.humanHours'),
+            color: 'var(--ui-chart-1)',
+          },
+          {
+            key: 'agents',
+            label: t('dashboard.agents.agentHours'),
+            color: 'var(--ui-chart-3)',
+          },
+        ],
+      }),
+    [agents, daily, grain, language, range, t],
+  )
+  const billing = useMemo(
+    () => getTimeBilling(overview?.totals ?? []),
+    [overview],
+  )
 
-    // Projects past the named colours share one "Other" row, as in the bars.
-    for (const share of shares) {
-      const key = keyOf(share.projectId)
-      const row = rows.get(key)
-
-      rows.set(key, {
-        key,
-        title:
-          key === OTHER_SERIES_KEY
-            ? t('dashboard.charts.other')
-            : (titles.get(share.projectId) ?? t('dashboard.charts.other')),
-        color: colors.get(key) ?? 'var(--ui-chart-other)',
-        seconds: (row?.seconds ?? 0) + share.seconds,
-        share: (row?.share ?? 0) + share.share,
-      })
-    }
-
-    return {
-      series,
-      keyOf,
-      shares: [...rows.values()],
-      billing: getTimeBilling(totals),
-    }
-  }, [overview, projects, t])
-
+  const dailyLoading = dailyPending && daily === null
   const overviewLoading = overviewPending && overview === null
-  const worked = view.shares.length > 0
-  const withSide = overviewLoading || overviewFailed || worked
+  const worked = byProject.shares.length > 0
+  const withSide = dailyLoading || dailyFailed || worked
 
   return (
     <Root>
@@ -151,27 +175,25 @@ export const TimeCharts = () => {
       <Charts data-side={withSide || undefined}>
         <TimeChartsDaily
           range={range}
-          daily={daily}
-          agents={agents?.daily ?? []}
-          projectSeries={view.series}
-          seriesKeyOf={view.keyOf}
+          bars={mode === 'projects' ? byProject : byKind}
           mode={mode}
           onModeChange={changeMode}
-          loading={dailyPending && daily === null}
+          empty={daily !== null && !worked && byKind.shares.length === 0}
+          loading={dailyLoading}
           failed={dailyFailed}
           onRetry={retry}
         />
         {withSide ? (
           <Side>
             <TimeChartsShare
-              rows={view.shares}
-              loading={overviewLoading}
-              failed={overviewFailed}
+              rows={byProject.shares}
+              loading={dailyLoading}
+              failed={dailyFailed}
               onRetry={retry}
             />
-            {view.billing ? (
+            {billing ? (
               <TimeChartsBilling
-                billing={view.billing}
+                billing={billing}
                 loading={overviewLoading}
                 failed={overviewFailed}
                 onRetry={retry}

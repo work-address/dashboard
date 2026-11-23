@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  getTimeBilling,
-  getTimeChartsRange,
-  getTimePeopleAgents,
-  getTimeProjectShares,
-} from './time-charts'
+import { getTimeBilling, getTimeChartsRange } from './time-charts'
 
 import { fromDay } from '@/shared'
 
@@ -44,21 +39,6 @@ describe('time charts range', () => {
         week,
       ),
     ).toEqual({ from: '2025-11-22', to: '2026-11-22' })
-  })
-})
-
-describe('project shares', () => {
-  it('orders projects by time and leaves idle ones out', () => {
-    expect(
-      getTimeProjectShares([
-        { projectId: 'a', trackedSeconds: 900 },
-        { projectId: 'b', trackedSeconds: 2700 },
-        { projectId: 'c', trackedSeconds: 0 },
-      ]),
-    ).toEqual([
-      { projectId: 'b', seconds: 2700, share: 0.75 },
-      { projectId: 'a', seconds: 900, share: 0.25 },
-    ])
   })
 })
 
@@ -108,31 +88,5 @@ describe('billing', () => {
     expect(
       getTimeBilling([{ projectId: 'a', trackedSeconds: 5000 }]),
     ).toBeNull()
-  })
-})
-
-describe('people and agents', () => {
-  it('keeps the two apart and leaves waiting out of agent work', () => {
-    const bars = getTimePeopleAgents(
-      [
-        { day: '2026-11-17', projectId: 'a', trackedSeconds: 3600 },
-        { day: '2026-11-17', projectId: 'b', trackedSeconds: 1800 },
-      ],
-      [
-        {
-          day: '2026-11-17',
-          userId: 'worker',
-          agentId: 'one',
-          product: 'codex',
-          assistedSeconds: 1800,
-          autonomousSeconds: 5400,
-          waitSeconds: 900,
-        },
-      ],
-      'day',
-      1,
-    )
-
-    expect(bars.get('2026-11-17')).toEqual({ people: 1.5, agents: 2 })
   })
 })

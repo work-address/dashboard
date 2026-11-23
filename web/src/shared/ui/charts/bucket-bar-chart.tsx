@@ -11,6 +11,8 @@ import {
 } from 'recharts'
 import styled from 'styled-components'
 
+import { useBreakpoint } from '../../hooks/use-breakpoint'
+
 import { ChartLegend } from './chart-legend'
 import { ChartPopup, pointInside } from './chart-popup'
 import { ChartTooltip, type ChartTooltipContent } from './chart-tooltip'
@@ -44,9 +46,11 @@ type Props = {
   fill?: boolean
   /**
    * `columns` stands the bars up along the bottom; `rows` lays them across,
-   * one labelled row per bucket, for a narrow screen with few buckets.
+   * one labelled row per bucket. `auto` lays them across on a phone when
+   * there are few enough to list - a week's days, or a working day by the
+   * hour - and stands them up otherwise.
    */
-  orientation?: 'columns' | 'rows'
+  orientation?: 'columns' | 'rows' | 'auto'
   className?: string
   /**
    * Everything to say about a bar, laid out in columns. Without it the popup
@@ -59,6 +63,9 @@ const SURFACE = 'var(--ui-surface)'
 
 /** Each bucket's height when the bars lie in rows. */
 const ROW_HEIGHT = 40
+
+/** The most buckets a phone lists as rows before a list would run too long. */
+const ROWS_MAX = 12
 
 /** A breakdown popup's width, for its columns to sit side by side in. */
 const POPUP_WIDTH = 600
@@ -86,7 +93,10 @@ export const BucketBarChart = ({
   describe,
 }: Props) => {
   const plotRef = useRef<HTMLDivElement>(null)
-  const rows = orientation === 'rows'
+  const isMobile = useBreakpoint('isMobile')
+  const rows =
+    orientation === 'rows' ||
+    (orientation === 'auto' && isMobile && buckets.length <= ROWS_MAX)
   // A rounded data end: the top of a column, the right of a row.
   const end = (r: number): [number, number, number, number] =>
     rows ? [0, r, r, 0] : [r, r, 0, 0]

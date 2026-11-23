@@ -1,38 +1,18 @@
-import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
-import {
-  getTimePeopleAgents,
-  type TimeChartsMode,
-  type TimeChartsRange,
-} from '../../model'
-
-import type {
-  StatisticsAgentDailyRow,
-  StatisticsDailyRow,
-} from '@/entities/statistics'
+import type { TimeChartsMode, TimeChartsRange } from '../../model'
 
 import {
   BucketBarChart,
-  bucketKeyOf,
-  bucketLabels,
   formatDurationFromMinutes,
   fromDay,
-  periodBuckets,
   ToolbarSegment,
   ToolbarShell,
-  useBreakpoint,
-  visibleBuckets,
-  weekStartsOnFor,
   WorkspacePanel,
   workspaceDesign,
-  type Bucket,
-  type BucketSeries,
+  type PeriodBars,
 } from '@/shared'
-
-/** The most buckets a phone lists as rows: a week, or a working day by hour. */
-const ROWS_MAX = 12
 
 const MODES: { mode: TimeChartsMode; labelKey: string }[] = [
   { mode: 'projects', labelKey: 'time.charts.daily.byProject' },
@@ -41,13 +21,12 @@ const MODES: { mode: TimeChartsMode; labelKey: string }[] = [
 
 type Props = {
   range: TimeChartsRange
-  daily: StatisticsDailyRow[] | null
-  agents: StatisticsAgentDailyRow[]
-  /** The projects that get a colour of their own, as the share list draws them. */
-  projectSeries: BucketSeries[]
-  seriesKeyOf: (projectId: string) => string
+  /** The period's bars as the chosen mode splits them. */
+  bars: PeriodBars
   mode: TimeChartsMode
   onModeChange: (mode: TimeChartsMode) => void
+  /** The period holds no tracked time and no agent work. */
+  empty: boolean
   loading: boolean
   failed: boolean
   onRetry: () => void
@@ -60,73 +39,16 @@ type Props = {
  */
 export const TimeChartsDaily = ({
   range,
-  daily,
-  agents,
-  projectSeries,
-  seriesKeyOf,
+  bars,
   mode,
   onModeChange,
+  empty,
   loading,
   failed,
   onRetry,
 }: Props) => {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? i18n.language
-  const isMobile = useBreakpoint('isMobile')
-
-  const chart = useMemo(() => {
-    const weekStartsOn = weekStartsOnFor(language)
-    const periods = periodBuckets(range, weekStartsOn)
-    const size = periods[0]?.size ?? 'day'
-    const values = new Map<string, Record<string, number>>()
-
-    if (mode === 'projects') {
-      for (const row of daily ?? []) {
-        const key = bucketKeyOf(row.day, size, weekStartsOn)
-        const bar = values.get(key) ?? {}
-        const seriesKey = seriesKeyOf(row.projectId)
-
-        bar[seriesKey] = (bar[seriesKey] ?? 0) + row.trackedSeconds / 3600
-        values.set(key, bar)
-      }
-    } else {
-      for (const [key, bar] of getTimePeopleAgents(
-        daily ?? [],
-        agents,
-        size,
-        weekStartsOn,
-      )) {
-        values.set(key, bar)
-      }
-    }
-
-    const buckets: Bucket[] = visibleBuckets(
-      periods,
-      new Set(values.keys()),
-    ).map((period) => ({
-      key: period.key,
-      ...bucketLabels(period, language),
-      values: values.get(period.key) ?? {},
-    }))
-
-    return { buckets }
-  }, [agents, daily, language, mode, range, seriesKeyOf])
-
-  const series: BucketSeries[] =
-    mode === 'projects'
-      ? projectSeries
-      : [
-          {
-            key: 'people',
-            label: t('dashboard.agents.humanHours'),
-            color: 'var(--ui-chart-1)',
-          },
-          {
-            key: 'agents',
-            label: t('dashboard.agents.agentHours'),
-            color: 'var(--ui-chart-3)',
-          },
-        ]
 
   const period = new Intl.DateTimeFormat(language, {
     month: 'short',
@@ -156,7 +78,7 @@ export const TimeChartsDaily = ({
       failed={failed}
       onRetry={onRetry}
       empty={
-        daily !== null && daily.length === 0 && agents.length === 0
+        empty
           ? {
               title: t('dashboard.timeDaily.empty.title'),
               description: t('time.charts.daily.empty'),
@@ -165,18 +87,14 @@ export const TimeChartsDaily = ({
       }
     >
       <Chart
-        // A phone lists a week's days as rows; more bars than that keep
-        // their columns rather than a long list.
-        orientation={
-          isMobile && chart.buckets.length <= ROWS_MAX ? 'rows' : 'columns'
-        }
+        orientation="auto"
         stacked={mode === 'projects'}
         height={workspaceDesign.chart.height}
         maxBarSize={workspaceDesign.chart.barMaxWidth}
         barRadius={workspaceDesign.chart.barRadius}
         gridDasharray="0"
-        buckets={chart.buckets}
-        series={series}
+        buckets={bars.buckets}
+        series={bars.series}
         formatValue={(hours) =>
           formatDurationFromMinutes(Math.round(hours * 60), t)
         }

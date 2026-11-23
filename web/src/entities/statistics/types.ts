@@ -111,6 +111,14 @@ export type StatisticsAgentRunCount = {
   count: number
 }
 
+/**
+ * An agent's work in a row: beside a person and alone. Waiting on a person is
+ * shown apart and never counts as the agent's work.
+ */
+export const agentWorkedSeconds = (
+  row: Pick<StatisticsAgentDailyRow, 'assistedSeconds' | 'autonomousSeconds'>,
+): number => row.assistedSeconds + row.autonomousSeconds
+
 /** Runs that started on one of the reader's days, by how they ended. */
 export type StatisticsAgentRunDay = {
   day: string

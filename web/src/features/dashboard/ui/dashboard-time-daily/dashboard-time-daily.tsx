@@ -10,40 +10,31 @@ import {
 } from '../../model/dashboard-filters'
 import { DashboardWidget } from '../dashboard-widget'
 
-import { $projects } from '@/entities/projects'
+import { $projects, projectSeriesNames } from '@/entities/projects'
 import {
   statisticsAgentsQuery,
   statisticsDailyQuery,
 } from '@/entities/statistics'
 import {
-  bucketKeyOf,
-  bucketLabels,
-  periodBuckets,
-  visibleBuckets,
-  OTHER_SERIES_KEY,
-  projectSeries,
+  askGrain,
+  OTHER_SERIES_COLOR,
+  periodBars,
+  ranked,
   BucketBarChart,
   formatDurationFromMinutes,
   formatCompactDurationFromMinutes,
   fromDay,
-  weekStartsOnFor,
   workspaceDesign,
-  type Bucket,
   type ChartTooltipContent,
-  useBreakpoint,
   WorkspaceCount,
 } from '@/shared'
 
 /** How many projects or agents a popup column names before it sums the rest. */
 const POPUP_ROWS = 6
 
-/** The most buckets a phone lists as rows: a week, or a working day by hour. */
-const ROWS_MAX = 12
-
 /** Tracked time across the period, one bar per day, week or month. */
 export const DashboardTimeDaily = () => {
   const { t, i18n } = useTranslation()
-  const isMobile = useBreakpoint('isMobile')
 
   const { range, allProjects, rows, agents, pending, failed, retry } = useUnit({
     range: $dashboardRange,
@@ -56,60 +47,35 @@ export const DashboardTimeDaily = () => {
   })
 
   const chart = useMemo(() => {
-    const weekStartsOn = weekStartsOnFor(i18n.language)
-    const periods = periodBuckets(range, weekStartsOn)
-    const size = periods[0]?.size ?? 'day'
-    const totals = new Map<string, number>()
-
-    for (const row of rows ?? []) {
-      totals.set(
-        row.projectId,
-        (totals.get(row.projectId) ?? 0) + row.trackedSeconds,
-      )
-    }
-
-    const { keyOf, series } = projectSeries(
-      allProjects,
-      totals,
-      t('dashboard.charts.other'),
-    )
-    const values = new Map<string, Record<string, number>>()
-
-    for (const row of rows ?? []) {
-      const key = bucketKeyOf(row.day, size, weekStartsOn)
-      const seriesKey = keyOf(row.projectId)
-      const bucket = values.get(key) ?? {}
-
-      bucket[seriesKey] = (bucket[seriesKey] ?? 0) + row.trackedSeconds / 3600
-      values.set(key, bucket)
-    }
-
-    const buckets: Bucket[] = visibleBuckets(
-      periods,
-      new Set(values.keys()),
-    ).map((period) => ({
-      key: period.key,
-      ...bucketLabels(period, i18n.language),
-      values: values.get(period.key) ?? {},
-    }))
+    const grain = askGrain(range)
+    const bars = periodBars({
+      period: range,
+      language: i18n.language,
+      sources: [
+        {
+          rows,
+          grain,
+          values: (row) => ({ [row.projectId]: row.trackedSeconds / 3600 }),
+        },
+      ],
+      series: ranked(
+        projectSeriesNames(allProjects),
+        t('dashboard.charts.other'),
+      ),
+    })
 
     return {
-      buckets,
-      series: series.map((item, index) => ({
-        ...item,
-        color:
-          item.key === OTHER_SERIES_KEY
-            ? 'var(--ui-chart-other)'
-            : `var(--ui-chart-${index + 1})`,
-      })),
-      keyOf,
+      buckets: bars.buckets,
+      series: bars.series,
       breakdowns: bucketBreakdowns(
+        range,
+        i18n.language,
+        grain,
         rows ?? [],
         agents?.daily ?? [],
-        size,
-        weekStartsOn,
       ),
-      periodMinutes: [...totals.values()].reduce((sum, s) => sum + s, 0) / 60,
+      periodMinutes:
+        bars.shares.reduce((sum, share) => sum + share.value, 0) * 60,
     }
   }, [allProjects, agents, range, rows, i18n.language, t])
 
@@ -178,7 +144,8 @@ export const DashboardTimeDaily = () => {
               label:
                 titles.get(project.projectId) ?? t('dashboard.charts.other'),
               value: duration(project.minutes),
-              color: colors.get(chart.keyOf(project.projectId)),
+              // A project with no series of its own is drawn under Other.
+              color: colors.get(project.projectId) ?? OTHER_SERIES_COLOR,
             })),
             ...more(bar.projects.length),
           ],
@@ -229,11 +196,7 @@ export const DashboardTimeDaily = () => {
       }
     >
       <Chart
-        // A phone lists a week's days as rows, as the preview does; more
-        // buckets than that keep their columns rather than a long list.
-        orientation={
-          isMobile && chart.buckets.length <= ROWS_MAX ? 'rows' : 'columns'
-        }
+        orientation="auto"
         height={workspaceDesign.chart.height}
         maxBarSize={workspaceDesign.chart.barMaxWidth}
         barRadius={workspaceDesign.chart.barRadius}

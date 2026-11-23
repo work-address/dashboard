@@ -16,18 +16,14 @@ import {
   statisticsProjectAppsQuery,
 } from '@/entities/statistics'
 import {
-  bucketKeyOf,
-  bucketLabels,
-  periodBuckets,
-  visibleBuckets,
+  askGrain,
+  periodBars,
   ChartTooltip,
   BucketBarChart,
   SERIES_COLORS,
   formatCount,
   formatCurrency,
   formatDurationFromMinutes,
-  weekStartsOnFor,
-  type Bucket,
   type ChartTooltipContent,
   type ChartTooltipRow,
 } from '@/shared'
@@ -301,28 +297,25 @@ export const DashboardProjectPopup = ({
   })
   const content = describe(projectId)
 
-  const buckets = useMemo((): Bucket[] => {
-    const weekStartsOn = weekStartsOnFor(i18n.language)
-    const periods = periodBuckets(range, weekStartsOn)
-    const size = periods[0]?.size ?? 'day'
-    const hours = new Map<string, number>()
-
-    for (const row of daily ?? []) {
-      if (row.projectId !== projectId) {
-        continue
-      }
-
-      const key = bucketKeyOf(row.day, size, weekStartsOn)
-
-      hours.set(key, (hours.get(key) ?? 0) + row.trackedSeconds / 3600)
-    }
-
-    return visibleBuckets(periods, new Set(hours.keys())).map((period) => ({
-      key: period.key,
-      ...bucketLabels(period, i18n.language),
-      values: { time: hours.get(period.key) ?? 0 },
-    }))
-  }, [daily, range, projectId, i18n.language])
+  const buckets = useMemo(
+    () =>
+      periodBars({
+        period: range,
+        language: i18n.language,
+        sources: [
+          {
+            rows: daily,
+            grain: askGrain(range),
+            values: (row): Record<string, number> =>
+              row.projectId === projectId
+                ? { time: row.trackedSeconds / 3600 }
+                : {},
+          },
+        ],
+        series: [],
+      }).buckets,
+    [daily, range, projectId, i18n.language],
+  )
 
   if (!content) {
     return null

@@ -1,9 +1,16 @@
 import { useTranslation } from 'react-i18next'
 
-import { ShareList, WorkspacePanel, type ShareListRow } from '@/shared'
+import {
+  formatCompactDurationFromMinutes,
+  formatDurationFromMinutes,
+  ShareList,
+  WorkspacePanel,
+  type ShareRow,
+} from '@/shared'
 
 type Props = {
-  rows: ShareListRow[]
+  /** Each project's hours and share of the period. */
+  rows: ShareRow[]
   loading: boolean
   failed: boolean
   onRetry: () => void
@@ -11,7 +18,8 @@ type Props = {
 
 /** Each project's part of the period, most time first. */
 export const TimeChartsShare = ({ rows, loading, failed, onRetry }: Props) => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const language = i18n.resolvedLanguage ?? i18n.language
 
   return (
     <WorkspacePanel
@@ -20,7 +28,15 @@ export const TimeChartsShare = ({ rows, loading, failed, onRetry }: Props) => {
       failed={failed}
       onRetry={onRetry}
     >
-      <ShareList rows={rows} />
+      <ShareList
+        rows={rows}
+        formatValue={(hours) =>
+          formatCompactDurationFromMinutes(hours * 60, language)
+        }
+        describeValue={(hours) =>
+          formatDurationFromMinutes(Math.round(hours * 60), t)
+        }
+      />
     </WorkspacePanel>
   )
 }

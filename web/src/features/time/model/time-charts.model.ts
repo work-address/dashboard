@@ -8,7 +8,7 @@ import {
   statisticsPeriodOverviewQuery,
   type StatisticsQuery,
 } from '@/entities/statistics'
-import { bucketSizeFor, toApiDateRange } from '@/shared'
+import { askGrain, toApiDateRange } from '@/shared'
 
 type TimeChartsRequest = {
   range: TimeChartsRange
@@ -39,7 +39,7 @@ const toStatisticsQuery = ({
   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   ...(projectId ? { projectIds: [projectId] } : {}),
   // A day or two is drawn by the hour, and the rows have to arrive that way.
-  ...(bucketSizeFor(range) === 'hour' ? { bucket: 'hour' as const } : {}),
+  ...(askGrain(range) === 'hour' ? { bucket: 'hour' as const } : {}),
 })
 
 sample({

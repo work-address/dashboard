@@ -12,20 +12,17 @@ import { DashboardWidget } from '../dashboard-widget'
 
 import { $projects } from '@/entities/projects'
 import {
+  agentWorkedSeconds,
   statisticsAgentsQuery,
   statisticsDailyQuery,
 } from '@/entities/statistics'
 import {
-  bucketKeyOf,
-  bucketLabels,
-  periodBuckets,
-  visibleBuckets,
+  askGrain,
+  periodBars,
   BucketBarChart,
   formatCompactDurationFromMinutes,
   formatDurationFromMinutes,
-  weekStartsOnFor,
   workspaceDesign,
-  type Bucket,
   type ChartTooltipContent,
 } from '@/shared'
 
@@ -66,28 +63,31 @@ export const DashboardAgents = () => {
   })
 
   const view = useMemo(() => {
-    const weekStartsOn = weekStartsOnFor(i18n.language)
-    const periods = periodBuckets(range, weekStartsOn)
-    const size = periods[0]?.size ?? 'day'
-    const values = new Map<string, Record<string, number>>()
-    const add = (day: string, key: string, hours: number) => {
-      const bucketKey = bucketKeyOf(day, size, weekStartsOn)
-      const bucket = values.get(bucketKey) ?? {}
-
-      bucket[key] = (bucket[key] ?? 0) + hours
-      values.set(bucketKey, bucket)
-    }
-
-    for (const row of daily ?? []) {
-      add(row.day, HUMAN, row.trackedSeconds / 3600)
-    }
+    const grain = askGrain(range)
+    // People beside their agents, never added: an agent often runs while
+    // its person is tracking.
+    const { buckets } = periodBars({
+      period: range,
+      language: i18n.language,
+      sources: [
+        {
+          rows: daily,
+          grain,
+          values: (row) => ({ [HUMAN]: row.trackedSeconds / 3600 }),
+        },
+        {
+          rows: agents?.daily,
+          grain,
+          values: (row) => ({ [AGENT]: agentWorkedSeconds(row) / 3600 }),
+        },
+      ],
+      series: [],
+    })
 
     const products = new Map<string, ProductRow>()
     const totals = { assisted: 0, autonomous: 0, waiting: 0 }
 
     for (const row of agents?.daily ?? []) {
-      add(row.day, AGENT, (row.assistedSeconds + row.autonomousSeconds) / 3600)
-
       const product = products.get(row.product) ?? {
         product: row.product,
         assisted: 0,
@@ -124,22 +124,14 @@ export const DashboardAgents = () => {
       products.set(row.product, product)
     }
 
-    const buckets: Bucket[] = visibleBuckets(
-      periods,
-      new Set(values.keys()),
-    ).map((period) => ({
-      key: period.key,
-      ...bucketLabels(period, i18n.language),
-      values: values.get(period.key) ?? {},
-    }))
-
     return {
       buckets,
       breakdowns: bucketBreakdowns(
+        range,
+        i18n.language,
+        grain,
         daily ?? [],
         agents?.daily ?? [],
-        size,
-        weekStartsOn,
       ),
       runs,
       totals,

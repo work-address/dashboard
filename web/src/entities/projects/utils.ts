@@ -66,3 +66,22 @@ export const mapProjectsAndStats = (
     }
   })
 }
+
+/**
+ * Projects as a chart names its series, in the order they were created: a
+ * project's place in the legend and its colour then do not move with how
+ * busy it is in a period.
+ */
+export const projectSeriesNames = (
+  projects: Pick<ProjectWithStats, 'id' | 'title' | 'createdAt'>[],
+): { id: string; title: string }[] =>
+  projects
+    .filter((project): project is typeof project & { id: string } =>
+      Boolean(project.id),
+    )
+    .sort(
+      (a, b) =>
+        (a.createdAt ?? '').localeCompare(b.createdAt ?? '') ||
+        a.id.localeCompare(b.id),
+    )
+    .map((project) => ({ id: project.id, title: project.title }))

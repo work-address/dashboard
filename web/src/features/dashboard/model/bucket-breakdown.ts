@@ -3,9 +3,7 @@ import type {
   StatisticsDailyRow,
 } from '@/entities/statistics'
 
-import { bucketKeyOf, type BucketSize } from '@/shared'
-
-type WeekStart = 0 | 1 | 2 | 3 | 4 | 5 | 6
+import { periodBars, type BarPeriod, type Grain } from '@/shared'
 
 export type AgentSplit = {
   assisted: number
@@ -30,54 +28,84 @@ const EMPTY: BucketBreakdown = {
   products: [],
 }
 
+/** Joins a product to one of its three states in a series key. */
+const SPLIT = '\u0000'
+
 /**
  * Human time by project and agent time by product, per bar, so either chart
  * can say everything about the bar under the pointer - not only the series
- * it draws.
+ * it draws. The bars are the same ones the charts draw: the same period,
+ * language and grain give the same keys.
  */
 export function bucketBreakdowns(
+  period: BarPeriod,
+  language: string,
+  /** The grain both kinds of row were asked in. */
+  grain: Grain,
   daily: StatisticsDailyRow[],
   agents: StatisticsAgentDailyRow[],
-  size: BucketSize,
-  weekStartsOn: WeekStart,
 ): Map<string, BucketBreakdown> {
-  const projects = new Map<string, Map<string, number>>()
-  const products = new Map<string, Map<string, AgentSplit>>()
-
-  for (const row of daily) {
-    const key = bucketKeyOf(row.day, size, weekStartsOn)
-    const bucket = projects.get(key) ?? new Map<string, number>()
-
-    bucket.set(
-      row.projectId,
-      (bucket.get(row.projectId) ?? 0) + row.trackedSeconds / 60,
-    )
-    projects.set(key, bucket)
-  }
-
-  for (const row of agents) {
-    const key = bucketKeyOf(row.day, size, weekStartsOn)
-    const bucket = products.get(key) ?? new Map<string, AgentSplit>()
-    const split = bucket.get(row.product) ?? {
-      assisted: 0,
-      autonomous: 0,
-      waiting: 0,
-    }
-
-    split.assisted += row.assistedSeconds / 60
-    split.autonomous += row.autonomousSeconds / 60
-    split.waiting += row.waitSeconds / 60
-    bucket.set(row.product, split)
-    products.set(key, bucket)
-  }
-
+  const people = periodBars({
+    period,
+    language,
+    sources: [
+      {
+        rows: daily,
+        grain,
+        values: (row) => ({ [row.projectId]: row.trackedSeconds / 60 }),
+      },
+    ],
+    series: [],
+  })
+  const work = periodBars({
+    period,
+    language,
+    sources: [
+      {
+        rows: agents,
+        grain,
+        values: (row) => ({
+          [`${row.product}${SPLIT}assisted`]: row.assistedSeconds / 60,
+          [`${row.product}${SPLIT}autonomous`]: row.autonomousSeconds / 60,
+          [`${row.product}${SPLIT}waiting`]: row.waitSeconds / 60,
+        }),
+      },
+    ],
+    series: [],
+  })
+  const byProject = new Map(
+    people.buckets.map((bucket) => [bucket.key, bucket.values]),
+  )
+  const byProduct = new Map(
+    work.buckets.map((bucket) => [bucket.key, bucket.values]),
+  )
   const out = new Map<string, BucketBreakdown>()
 
-  for (const key of new Set([...projects.keys(), ...products.keys()])) {
-    const projectRows = [...(projects.get(key) ?? [])]
+  for (const key of new Set([...byProject.keys(), ...byProduct.keys()])) {
+    const projectValues = Object.entries(byProject.get(key) ?? {})
+    const productValues = Object.entries(byProduct.get(key) ?? {})
+
+    if (projectValues.length === 0 && productValues.length === 0) {
+      continue
+    }
+
+    const splits = new Map<string, AgentSplit>()
+
+    for (const [seriesKey, minutes] of productValues) {
+      const [product, state] = seriesKey.split(SPLIT) as [
+        string,
+        keyof AgentSplit,
+      ]
+      const split = splits.get(product) ?? { ...EMPTY.agents }
+
+      split[state] += minutes
+      splits.set(product, split)
+    }
+
+    const projectRows = projectValues
       .map(([projectId, minutes]) => ({ projectId, minutes }))
       .sort((a, b) => b.minutes - a.minutes)
-    const productRows = [...(products.get(key) ?? [])]
+    const productRows = [...splits]
       .map(([product, split]) => ({ product, ...split }))
       .sort(
         (a, b) =>

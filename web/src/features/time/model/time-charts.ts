@@ -1,17 +1,10 @@
 import { subDays } from 'date-fns'
 
 import type { TimeWeek } from './time-week'
-import type {
-  StatisticsAgentDailyRow,
-  StatisticsDailyRow,
-  StatisticsTotalsRow,
-} from '@/entities/statistics'
+import type { StatisticsTotalsRow } from '@/entities/statistics'
 import type { TimeFilters } from '@/entities/time'
 
-import { bucketKeyOf, MAX_RANGE_DAYS, toDay, type BucketSize } from '@/shared'
-
-/** 0 is Sunday, as date-fns counts. */
-type WeekStart = 0 | 1 | 2 | 3 | 4 | 5 | 6
+import { MAX_RANGE_DAYS, toDay } from '@/shared'
 
 /** Reader's days, both ends included. */
 export type TimeChartsRange = { from: string; to: string }
@@ -40,31 +33,6 @@ export const getTimeChartsRange = (
     from: toDay(first < earliest ? earliest : first),
     to: toDay(last),
   }
-}
-
-export type TimeProjectShare = {
-  projectId: string
-  seconds: number
-  /** 0-1 of the period's tracked time. */
-  share: number
-}
-
-/** Each project's part of the period, most time first; idle projects left out. */
-export const getTimeProjectShares = (
-  totals: Pick<StatisticsTotalsRow, 'projectId' | 'trackedSeconds'>[],
-): TimeProjectShare[] => {
-  const worked = totals.filter((row) => row.trackedSeconds > 0)
-  const all = worked.reduce((sum, row) => sum + row.trackedSeconds, 0)
-
-  return worked
-    .map((row) => ({
-      projectId: row.projectId,
-      seconds: row.trackedSeconds,
-      share: row.trackedSeconds / all,
-    }))
-    .sort(
-      (a, b) => b.seconds - a.seconds || a.projectId.localeCompare(b.projectId),
-    )
 }
 
 export type TimeBilling = {
@@ -116,37 +84,4 @@ export const getTimeBilling = (
     paidSeconds: paid,
     parts: { paid, awaiting, open: trackedSeconds - paid - awaiting },
   }
-}
-
-export type TimePeopleAgents = { people: number; agents: number }
-
-/**
- * People's tracked hours and agents' working hours per bar. They are kept
- * apart, never added: an agent often runs while its person is tracking, so
- * a sum would count that hour twice. Waiting on a person is not agent work.
- */
-export const getTimePeopleAgents = (
-  daily: StatisticsDailyRow[],
-  agents: StatisticsAgentDailyRow[],
-  size: BucketSize,
-  weekStartsOn: WeekStart,
-): Map<string, TimePeopleAgents> => {
-  const bars = new Map<string, TimePeopleAgents>()
-  const add = (day: string, key: keyof TimePeopleAgents, hours: number) => {
-    const barKey = bucketKeyOf(day, size, weekStartsOn)
-    const bar = bars.get(barKey) ?? { people: 0, agents: 0 }
-
-    bar[key] += hours
-    bars.set(barKey, bar)
-  }
-
-  for (const row of daily) {
-    add(row.day, 'people', row.trackedSeconds / 3600)
-  }
-
-  for (const row of agents) {
-    add(row.day, 'agents', (row.assistedSeconds + row.autonomousSeconds) / 3600)
-  }
-
-  return bars
 }

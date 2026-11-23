@@ -98,12 +98,9 @@ export {
 export {
   getTimeBilling,
   getTimeChartsRange,
-  getTimePeopleAgents,
-  getTimeProjectShares,
   type TimeBilling,
   type TimeChartsMode,
   type TimeChartsRange,
-  type TimeProjectShare,
 } from './time-charts'
 export {
   $timeChartsMode,

@@ -3,15 +3,11 @@ import styled from 'styled-components'
 
 import {
   BucketBarChart,
-  useBreakpoint,
   WorkspacePanel,
   workspaceDesign,
   type Bucket,
   type BucketSeries,
 } from '@/shared'
-
-/** The most buckets a phone lists as rows: a week, or a working day by hour. */
-const ROWS_MAX = 12
 
 type Props = {
   title: string
@@ -43,7 +39,6 @@ export const AgentsChartPanel = ({
   onRetry,
 }: Props) => {
   const { t } = useTranslation()
-  const isMobile = useBreakpoint('isMobile')
 
   return (
     <Root
@@ -54,11 +49,7 @@ export const AgentsChartPanel = ({
       onRetry={onRetry}
     >
       <Chart
-        // A phone lists a week's days as rows; more bars than that keep
-        // their columns rather than a long list.
-        orientation={
-          isMobile && buckets.length <= ROWS_MAX ? 'rows' : 'columns'
-        }
+        orientation="auto"
         height={height}
         maxBarSize={workspaceDesign.chart.barMaxWidth}
         barRadius={workspaceDesign.chart.agentBarRadius}

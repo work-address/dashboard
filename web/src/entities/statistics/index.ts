@@ -15,6 +15,8 @@ export {
   statisticsWeekOverviewQuery,
 } from './statistics.queries'
 
+export { agentWorkedSeconds } from './types'
+
 export type {
   StatisticsAgentDailyRow,
   StatisticsAgentRunCount,

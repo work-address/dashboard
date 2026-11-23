@@ -1,24 +1,20 @@
 import { subDays } from 'date-fns'
 
 import type { AgentRunFilters } from './agent-runs'
-import type {
-  StatisticsAgentDailyRow,
-  StatisticsAgentRunDay,
-  StatisticsQuery,
-} from '@/entities/statistics'
 
 import {
-  bucketKeyOf,
-  bucketSizeFor,
+  agentWorkedSeconds,
+  type StatisticsAgentDailyRow,
+  type StatisticsAgentRunDay,
+  type StatisticsQuery,
+} from '@/entities/statistics'
+import {
+  askGrain,
   fromDay,
   MAX_RANGE_DAYS,
   toApiDateRange,
   toDay,
-  type BucketSize,
 } from '@/shared'
-
-/** 0 is Sunday, as date-fns counts. */
-type WeekStart = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
 /** Reader's days, both ends included. */
 export type AgentChartsRange = { from: string; to: string }
@@ -56,7 +52,7 @@ export const agentChartsQuery = (
     ...(filters.userId ? { userIds: [filters.userId] } : {}),
     ...(filters.agentId ? { agentIds: [filters.agentId] } : {}),
     // A day or two is drawn by the hour, and the rows have to arrive that way.
-    ...(bucketSizeFor(range) === 'hour' ? { bucket: 'hour' as const } : {}),
+    ...(askGrain(range) === 'hour' ? { bucket: 'hour' as const } : {}),
   }
 }
 
@@ -71,64 +67,23 @@ export const agentChartsKey = (filters: AgentRunFilters): string =>
   ].join('|')
 
 /**
- * Each agent's working hours per bar, and over the whole period. Working is
- * assisted plus autonomous: waiting on a person is not the agent's work.
+ * What a row adds to its agent's hours. An agent that only waited on a
+ * person adds nothing, so it gets no series of its own.
  */
-export const getAgentHours = (
-  daily: StatisticsAgentDailyRow[],
-  size: BucketSize,
-  weekStartsOn: WeekStart,
-): {
-  bars: Map<string, Record<string, number>>
-  totals: Map<string, number>
-} => {
-  const bars = new Map<string, Record<string, number>>()
-  const totals = new Map<string, number>()
+export const agentHoursOf = (
+  row: StatisticsAgentDailyRow,
+): Record<string, number> => {
+  const seconds = agentWorkedSeconds(row)
 
-  for (const row of daily) {
-    const hours = (row.assistedSeconds + row.autonomousSeconds) / 3600
-
-    if (hours <= 0) {
-      continue
-    }
-
-    const key = bucketKeyOf(row.day, size, weekStartsOn)
-    const bar = bars.get(key) ?? {}
-
-    bar[row.agentId] = (bar[row.agentId] ?? 0) + hours
-    bars.set(key, bar)
-    totals.set(row.agentId, (totals.get(row.agentId) ?? 0) + hours)
-  }
-
-  return { bars, totals }
+  return seconds > 0 ? { [row.agentId]: seconds / 3600 } : {}
 }
 
-export type AgentStateHours = {
-  assisted: number
-  autonomous: number
-  waiting: number
-}
-
-/** Hours beside a person, alone, and waiting on a person, per bar. */
-export const getAgentStates = (
-  daily: StatisticsAgentDailyRow[],
-  size: BucketSize,
-  weekStartsOn: WeekStart,
-): Map<string, AgentStateHours> => {
-  const bars = new Map<string, AgentStateHours>()
-
-  for (const row of daily) {
-    const key = bucketKeyOf(row.day, size, weekStartsOn)
-    const bar = bars.get(key) ?? { assisted: 0, autonomous: 0, waiting: 0 }
-
-    bar.assisted += row.assistedSeconds / 3600
-    bar.autonomous += row.autonomousSeconds / 3600
-    bar.waiting += row.waitSeconds / 3600
-    bars.set(key, bar)
-  }
-
-  return bars
-}
+/** A row's hours beside a person, alone, and waiting on a person. */
+export const agentStateHoursOf = (row: StatisticsAgentDailyRow) => ({
+  assisted: row.assistedSeconds / 3600,
+  autonomous: row.autonomousSeconds / 3600,
+  waiting: row.waitSeconds / 3600,
+})
 
 /** How a run ended, in the order the chart stacks them; anything else is open. */
 export const AGENT_RUN_ENDINGS = [
@@ -144,30 +99,11 @@ const isEnding = (status: string): status is AgentRunEnding =>
   (AGENT_RUN_ENDINGS as readonly string[]).includes(status)
 
 /**
- * Runs per bar by how they ended, counted on the day they started. A status
- * the chart has no name for is a run still open, as the list reads it.
+ * What a day's count of runs adds, by how they ended. A status the chart has
+ * no name for is a run still open, as the list reads it.
  */
-export const getAgentRunEndings = (
-  runs: StatisticsAgentRunDay[],
-  size: BucketSize,
-  weekStartsOn: WeekStart,
-): Map<string, Record<AgentRunEnding, number>> => {
-  const bars = new Map<string, Record<AgentRunEnding, number>>()
-
-  for (const row of runs) {
-    // Runs arrive by day even when the period is drawn by the hour.
-    const key =
-      size === 'hour' ? row.day : bucketKeyOf(row.day, size, weekStartsOn)
-    const bar = bars.get(key) ?? {
-      completed: 0,
-      failed: 0,
-      cancelled: 0,
-      running: 0,
-    }
-
-    bar[isEnding(row.status) ? row.status : 'running'] += row.count
-    bars.set(key, bar)
-  }
-
-  return bars
-}
+export const agentRunEndingsOf = (
+  row: StatisticsAgentRunDay,
+): Record<string, number> => ({
+  [isEnding(row.status) ? row.status : 'running']: row.count,
+})

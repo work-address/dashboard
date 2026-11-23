@@ -1,4 +1,3 @@
-import { addDays } from 'date-fns'
 import { useUnit } from 'effector-react'
 import { useCallback, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,10 +6,10 @@ import styled from 'styled-components'
 import {
   AGENT_RUN_ENDINGS,
   agentChartsKey,
+  agentHoursOf,
+  agentRunEndingsOf,
+  agentStateHoursOf,
   getAgentChartsRange,
-  getAgentHours,
-  getAgentRunEndings,
-  getAgentStates,
   type AgentRunEnding,
 } from '../model/agent-charts'
 import { agentChartsRequested } from '../model/agent-charts.model'
@@ -21,20 +20,14 @@ import type { AgentRunFilters } from '../model/agent-runs'
 
 import { statisticsAgentRunsQuery } from '@/entities/statistics'
 import {
-  bucketLabels,
+  askGrain,
   formatCount,
   formatDurationFromMinutes,
   fromDay,
-  periodBuckets,
-  projectSeries,
-  toDay,
-  visibleBuckets,
-  weekStartsOnFor,
+  periodBars,
+  ranked,
   WorkspaceHiddenHistory,
   workspaceDesign,
-  type Bucket,
-  type BucketSeries,
-  type PeriodBucket,
 } from '@/shared'
 
 const ENDING_COLORS: Record<AgentRunEnding, string> = {
@@ -86,90 +79,72 @@ export const AgentsCharts = ({ filters, agentNames }: Props) => {
   }, [retry])
 
   const charts = useMemo(() => {
-    const weekStartsOn = weekStartsOnFor(language)
     const range = getAgentChartsRange(filters)
-    const periods = periodBuckets(range, weekStartsOn)
-    const size = periods[0]?.size ?? 'day'
-    const daily = data?.daily ?? []
-    const toBuckets = (
-      shown: PeriodBucket[],
-      values: Map<string, Record<string, number>>,
-    ): Bucket[] =>
-      visibleBuckets(shown, new Set(values.keys())).map((period) => ({
-        key: period.key,
-        ...bucketLabels(period, language),
-        values: values.get(period.key) ?? {},
-      }))
+    const grain = askGrain(range)
+    const daily = data?.daily
+    // An agent the reader's team no longer lists still ran: it keeps a
+    // series, under the name the page has for such agents.
+    const named = new Map(agentNames)
 
-    const hours = getAgentHours(daily, size, weekStartsOn)
-    const { keyOf, series } = projectSeries(
-      [...hours.totals.keys()].map((id) => ({
-        id,
-        title: agentNames.get(id) ?? t('agents.charts.unnamed'),
-      })),
-      hours.totals,
-      t('dashboard.charts.other'),
-    )
-    const byAgent = new Map<string, Record<string, number>>()
-
-    // Agents past the named colours share one "Other" series.
-    for (const [bucket, bar] of hours.bars) {
-      const merged: Record<string, number> = {}
-
-      for (const [agentId, value] of Object.entries(bar)) {
-        merged[keyOf(agentId)] = (merged[keyOf(agentId)] ?? 0) + value
-      }
-
-      byAgent.set(bucket, merged)
-    }
-
-    // Runs are counted by day, so a period drawn by the hour shows its days.
-    const days: PeriodBucket[] = []
-
-    if (size === 'hour') {
-      for (
-        let day = fromDay(range.from);
-        day <= fromDay(range.to);
-        day = addDays(day, 1)
-      ) {
-        days.push({ key: toDay(day), start: day, size: 'day' })
+    for (const row of daily ?? []) {
+      if (!named.has(row.agentId)) {
+        named.set(row.agentId, t('agents.charts.unnamed'))
       }
     }
+
+    const shared = { period: range, language }
 
     return {
       range,
-      agentSeries: series,
-      hours: toBuckets(periods, byAgent),
-      states: toBuckets(periods, getAgentStates(daily, size, weekStartsOn)),
-      endings: toBuckets(
-        size === 'hour' ? days : periods,
-        getAgentRunEndings(data?.runsDaily ?? [], size, weekStartsOn),
-      ),
+      hours: periodBars({
+        ...shared,
+        sources: [{ rows: daily, grain, values: agentHoursOf }],
+        // By name, so an agent keeps its place and colour between periods.
+        series: ranked(
+          [...named]
+            .map(([id, title]) => ({ id, title }))
+            .sort(
+              (a, b) =>
+                a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
+            ),
+          t('dashboard.charts.other'),
+        ),
+      }),
+      states: periodBars({
+        ...shared,
+        sources: [{ rows: daily, grain, values: agentStateHoursOf }],
+        series: [
+          {
+            key: 'assisted',
+            label: t('dashboard.agents.assisted'),
+            color: 'var(--ui-chart-1)',
+          },
+          {
+            key: 'autonomous',
+            label: t('dashboard.agents.autonomous'),
+            color: 'var(--ui-chart-2)',
+          },
+          {
+            key: 'waiting',
+            label: t('dashboard.agents.waiting'),
+            color: 'var(--ui-chart-other)',
+          },
+        ],
+      }),
+      // Runs are counted by day, which the bars then follow.
+      endings: periodBars({
+        ...shared,
+        sources: [
+          { rows: data?.runsDaily, grain: 'day', values: agentRunEndingsOf },
+        ],
+        series: AGENT_RUN_ENDINGS.map((ending) => ({
+          key: ending,
+          label: t(ENDING_LABELS[ending]),
+          color: ENDING_COLORS[ending],
+        })),
+      }),
     }
   }, [agentNames, data, filters, language, t])
-
-  const stateSeries: BucketSeries[] = [
-    {
-      key: 'assisted',
-      label: t('dashboard.agents.assisted'),
-      color: 'var(--ui-chart-1)',
-    },
-    {
-      key: 'autonomous',
-      label: t('dashboard.agents.autonomous'),
-      color: 'var(--ui-chart-2)',
-    },
-    {
-      key: 'waiting',
-      label: t('dashboard.agents.waiting'),
-      color: 'var(--ui-chart-other)',
-    },
-  ]
-  const endingSeries: BucketSeries[] = AGENT_RUN_ENDINGS.map((ending) => ({
-    key: ending,
-    label: t(ENDING_LABELS[ending]),
-    color: ENDING_COLORS[ending],
-  }))
 
   const loading = pending && data === null
   const nothing =
@@ -204,8 +179,8 @@ export const AgentsCharts = ({ filters, agentNames }: Props) => {
           <AgentsChartPanel
             title={t('agents.charts.hours.title')}
             description={period}
-            buckets={charts.hours}
-            series={charts.agentSeries}
+            buckets={charts.hours.buckets}
+            series={charts.hours.series}
             height={workspaceDesign.chart.minHeight}
             formatValue={hoursValue}
             formatTick={hoursTick}
@@ -215,8 +190,8 @@ export const AgentsCharts = ({ filters, agentNames }: Props) => {
           <Pair>
             <AgentsChartPanel
               title={t('agents.charts.states.title')}
-              buckets={charts.states}
-              series={stateSeries}
+              buckets={charts.states.buckets}
+              series={charts.states.series}
               height={workspaceDesign.chart.agentHeight}
               formatValue={hoursValue}
               formatTick={hoursTick}
@@ -224,8 +199,8 @@ export const AgentsCharts = ({ filters, agentNames }: Props) => {
             />
             <AgentsChartPanel
               title={t('agents.charts.endings.title')}
-              buckets={charts.endings}
-              series={endingSeries}
+              buckets={charts.endings.buckets}
+              series={charts.endings.series}
               height={workspaceDesign.chart.agentHeight}
               formatValue={(count) =>
                 t('agents.list.count', { count: Math.round(count) })

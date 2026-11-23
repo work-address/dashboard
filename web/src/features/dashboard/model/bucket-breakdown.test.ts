@@ -5,6 +5,9 @@ import { bucketBreakdowns } from './bucket-breakdown'
 describe('bucket breakdowns', () => {
   it('gathers people by project and agents by product under each bar', () => {
     const map = bucketBreakdowns(
+      { from: '2026-10-25', to: '2026-10-25' },
+      'ru',
+      'hour',
       [
         { day: '2026-10-25T09', projectId: 'a', trackedSeconds: 1800 },
         { day: '2026-10-25T09', projectId: 'b', trackedSeconds: 3600 },
@@ -30,8 +33,6 @@ describe('bucket breakdowns', () => {
           waitSeconds: 0,
         },
       ],
-      'hour',
-      1,
     )
     const nine = map.get('2026-10-25T09')!
 
@@ -47,13 +48,14 @@ describe('bucket breakdowns', () => {
 
   it('adds days up into their week', () => {
     const map = bucketBreakdowns(
+      { from: '2026-08-01', to: '2026-10-31' },
+      'ru',
+      'day',
       [
         { day: '2026-10-20', projectId: 'a', trackedSeconds: 3600 },
         { day: '2026-10-22', projectId: 'a', trackedSeconds: 3600 },
       ],
       [],
-      'week',
-      1,
     )
 
     expect(map.get('2026-10-19')!.peopleMinutes).toBe(120)

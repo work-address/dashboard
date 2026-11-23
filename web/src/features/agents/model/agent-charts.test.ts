@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   agentChartsKey,
   agentChartsQuery,
+  agentHoursOf,
+  agentRunEndingsOf,
+  agentStateHoursOf,
   getAgentChartsRange,
-  getAgentHours,
-  getAgentRunEndings,
-  getAgentStates,
 } from './agent-charts'
 
 const row = (
@@ -71,84 +71,34 @@ describe('agent charts query', () => {
   })
 })
 
-describe('agent hours', () => {
-  it('sums working hours per agent and leaves waiting out', () => {
-    const { bars, totals } = getAgentHours(
-      [
-        row('2026-11-10', 'one', 1800, 1800, 3600),
-        row('2026-11-10', 'two', 0, 7200),
-        row('2026-11-11', 'one', 3600, 0),
-        row('2026-11-11', 'idle', 0, 0, 600),
-      ],
-      'day',
-      1,
-    )
-
-    expect(bars.get('2026-11-10')).toEqual({ one: 1, two: 2 })
-    expect(bars.get('2026-11-11')).toEqual({ one: 1 })
-    expect([...totals]).toEqual([
-      ['one', 2],
-      ['two', 2],
-    ])
+describe('what a row adds', () => {
+  it('counts an agent’s work and leaves waiting out', () => {
+    expect(agentHoursOf(row('2026-11-10', 'one', 1800, 1800, 3600))).toEqual({
+      one: 1,
+    })
   })
 
-  it('gathers days into the week they fall in', () => {
-    const { bars } = getAgentHours(
-      [row('2026-11-10', 'one', 3600, 0), row('2026-11-12', 'one', 3600, 0)],
-      'week',
-      1,
-    )
-
-    expect(bars.get('2026-11-09')).toEqual({ one: 2 })
+  it('gives an agent that only waited no series', () => {
+    expect(agentHoursOf(row('2026-11-11', 'idle', 0, 0, 600))).toEqual({})
   })
-})
 
-describe('agent states', () => {
   it('keeps assisted, autonomous and waiting apart', () => {
     expect(
-      getAgentStates(
-        [
-          row('2026-11-10', 'one', 1800, 3600, 900),
-          row('2026-11-10', 'two', 1800, 0, 900),
-        ],
-        'day',
-        1,
-      ).get('2026-11-10'),
-    ).toEqual({ assisted: 1, autonomous: 1, waiting: 0.5 })
+      agentStateHoursOf(row('2026-11-10', 'one', 1800, 3600, 900)),
+    ).toEqual({ assisted: 0.5, autonomous: 1, waiting: 0.25 })
   })
 })
 
 describe('run endings', () => {
-  it('counts runs on the day they started, by how they ended', () => {
-    const bars = getAgentRunEndings(
-      [
-        { day: '2026-11-10', status: 'completed', count: 4 },
-        { day: '2026-11-10', status: 'failed', count: 1 },
-        { day: '2026-11-11', status: 'cancelled', count: 2 },
-      ],
-      'day',
-      1,
-    )
-
-    expect(bars.get('2026-11-10')).toEqual({
-      completed: 4,
-      failed: 1,
-      cancelled: 0,
-      running: 0,
-    })
-    expect(bars.get('2026-11-11')?.cancelled).toBe(2)
+  it('counts a day’s runs under how they ended', () => {
+    expect(
+      agentRunEndingsOf({ day: '2026-11-10', status: 'failed', count: 2 }),
+    ).toEqual({ failed: 2 })
   })
 
   it('reads a status it has no name for as a run still open', () => {
     expect(
-      getAgentRunEndings(
-        [
-          { day: '2026-11-10', status: 'running', count: 1 },
-          { day: '2026-11-10', status: 'unknown', count: 2 },
-        ],
-        'day',
-        1,
-      ).get('2026-11-10')?.running,
-    ).toBe(3)
+      agentRunEndingsOf({ day: '2026-11-10', status: 'unknown', count: 3 }),
+    ).toEqual({ running: 3 })
   })
 })

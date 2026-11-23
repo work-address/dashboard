@@ -1,22 +1,14 @@
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
-import {
-  formatCompactDurationFromMinutes,
-  formatDurationFromMinutes,
-} from '../../lib/formatters'
-
-export type ShareListRow = {
-  key: string
-  title: string
-  color: string
-  seconds: number
-  /** 0-1 of the whole. */
-  share: number
-}
+import type { ShareRow } from './period-bars'
 
 type Props = {
-  rows: ShareListRow[]
+  rows: ShareRow[]
+  /** A row's value as the list shows it, such as "12h 30m". */
+  formatValue: (value: number) => string
+  /** The same value in full, for assistive technology. */
+  describeValue: (value: number) => string
   className?: string
 }
 
@@ -27,9 +19,13 @@ const percent = (share: number) => Math.max(1, Math.round(share * 100))
  * Parts of a whole, most first: a ranked list rather than a ring, so a dozen
  * rows stay readable and each carries its own figures.
  */
-export const ShareList = ({ rows, className }: Props) => {
-  const { t, i18n } = useTranslation()
-  const language = i18n.resolvedLanguage ?? i18n.language
+export const ShareList = ({
+  rows,
+  formatValue,
+  describeValue,
+  className,
+}: Props) => {
+  const { t } = useTranslation()
 
   return (
     <List className={className}>
@@ -39,13 +35,13 @@ export const ShareList = ({ rows, className }: Props) => {
           aria-label={t('charts.share.row', {
             name: row.title,
             share: percent(row.share),
-            time: formatDurationFromMinutes(Math.round(row.seconds / 60), t),
+            time: describeValue(row.value),
           })}
         >
           <Name title={row.title}>{row.title}</Name>
           <Figures aria-hidden>
             <Share>{percent(row.share)}%</Share>
-            {formatCompactDurationFromMinutes(row.seconds / 60, language)}
+            {formatValue(row.value)}
           </Figures>
           <Track aria-hidden>
             <Fill
