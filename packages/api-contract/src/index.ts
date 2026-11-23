@@ -4,7 +4,22 @@
  * web/src/shared/mock/contract.test.ts. Where they differ the API is right,
  * unless SPEC.md says otherwise.
  */
-export type ContractPerson = 'owner' | 'worker' | 'viewer' | 'outsider'
+export type ContractPerson =
+  | 'owner'
+  | 'worker'
+  | 'viewer'
+  | 'outsider'
+  /** On the Free plan, where `owner` is on Premium; owns `freeProject` alone. */
+  | 'freeOwner'
+
+/** Who makes a request: one of the people, or someone with no session at all. */
+export type ContractReader = ContractPerson | 'anyone'
+
+/** A shared report, by its id and by the secret in its link. */
+export interface ContractReport {
+  id: string
+  token: string
+}
 
 /** Ids of a small world every scenario starts from, rate $60/h, 24 h review. */
 export interface ContractWorld {
@@ -32,6 +47,44 @@ export interface ContractWorld {
   ownerEntry: string
   /** The worker's, 30 minutes, on a paid invoice of 3000 cents, un-marked by hand. */
   settledEntry: string
+  /**
+   * The worker's agents on `project`, by the id a reader filters with. Each
+   * has one run, one running stretch long: `agent`'s is claude-code, completed,
+   * 30 minutes from `agentRunFromUnix`, the last 20 of them inside
+   * `draftEntry`; `otherAgent`'s is codex, failed, 10 minutes from
+   * `otherAgentRunFromUnix`, a day earlier and beside no entry. `agent` is on
+   * the worker's agent list, named 'claude-code', and on `project` at $12/h;
+   * `otherAgent` has no rate there.
+   */
+  agent: string
+  otherAgent: string
+  agentRunFromUnix: number
+  otherAgentRunFromUnix: number
+  /**
+   * `freeOwner`'s, with nobody else on it, so its history is hidden at 14
+   * days. Holds 30 minutes of the free owner's, four hours old, on
+   * `freeInvoice` and marked paid by hand.
+   */
+  freeProject: string
+  /** Requested, issued by the free owner. */
+  freeInvoice: string
+  /**
+   * Shared reports, each of one project over `contractSpan()` unless it says
+   * otherwise. The owner's is of everyone on `project`, with amounts on.
+   */
+  ownerReport: ContractReport
+  /** The worker's of `project`: their own time, amounts off, not invoiced. */
+  workerReport: ContractReport
+  /** The viewer's of `project`. */
+  viewerReport: ContractReport
+  /** The worker's of `project`, remembering `invoice` as made from it. */
+  invoicedReport: ContractReport
+  /** The worker's of `project`, deleted. */
+  deletedReport: ContractReport
+  /** The free owner's of `freeProject`: its 30 days reach past the free plan. */
+  freeReport: ContractReport
+  /** The free owner's of `freeProject` over `contractSpan(7)`. */
+  freeRecentReport: ContractReport
 }
 
 export interface ContractRequest {
@@ -48,29 +101,56 @@ export interface ContractResponse {
 
 export interface ContractAdapter {
   seed(): Promise<ContractWorld>
+  /** As 'anyone', the request carries no session at all. */
   send(
-    person: ContractPerson,
+    reader: ContractReader,
     request: ContractRequest,
   ): Promise<ContractResponse>
 }
 
 export interface ContractScenario {
   name: string
-  as: ContractPerson
+  as: ContractReader
   request: (world: ContractWorld) => ContractRequest
   status: number
   /** What must hold of the body; returns what is wrong, or nothing. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   check?: (body: any, world: ContractWorld) => string | undefined
+  /**
+   * A second request, made once the first has answered as it should, to read
+   * back what the first changed. `first` is the first answer's body.
+   */
+  after?: {
+    as: ContractReader
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    request: (world: ContractWorld, first: any) => ContractRequest
+    status: number
+    check?: (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      body: any,
+      world: ContractWorld,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      first: any,
+    ) => string | undefined
+  }
 }
 
 const DAY_MS = 86_400_000
 const day = (offset: number) =>
   new Date(Date.now() + offset * DAY_MS).toISOString().slice(0, 10)
-const statistics = (extra: Record<string, unknown> = {}) => ({
-  from: day(-30),
+
+/**
+ * The span statistics and shared reports are read over: `days` back through
+ * today, in UTC. Both adapters seed their reports with it.
+ */
+export const contractSpan = (days = 30) => ({
+  from: day(-days),
   to: day(1),
   timeZone: 'UTC',
+})
+
+const statistics = (extra: Record<string, unknown> = {}) => ({
+  ...contractSpan(),
   ...extra,
 })
 
@@ -125,6 +205,285 @@ const overview = (w: ContractWorld): ContractRequest => ({
   path: '/statistics/overview',
   body: statistics({ projectIds: [w.project] }),
 })
+
+const freeOverview = (w: ContractWorld): ContractRequest => ({
+  method: 'post',
+  path: '/statistics/overview',
+  body: statistics({ projectIds: [w.freeProject] }),
+})
+
+const agentsDaily =
+  (extra: (w: ContractWorld) => Record<string, unknown> = () => ({})) =>
+  (w: ContractWorld): ContractRequest => ({
+    method: 'post',
+    path: '/statistics/agents/daily',
+    body: statistics({ projectIds: [w.project], ...extra(w) }),
+  })
+
+/** The free plan keeps 14 days: `FREE_RETENTION_DAYS` in the API's model/plan.ts. */
+const FREE_RETENTION_MS = 14 * DAY_MS
+
+/** What is wrong with a body that should say the free plan hides history. */
+const hidesHistory =
+  (canUpgrade: boolean) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (body: any) => {
+    const at = Date.parse(body.hiddenBefore)
+    const limit = Date.now() - FREE_RETENTION_MS
+    if (!(Math.abs(at - limit) < 60_000))
+      return `hiddenBefore is ${JSON.stringify(body.hiddenBefore)}, not ${new Date(limit).toISOString()}`
+    if (body.hiddenBefore !== new Date(at).toISOString())
+      return `hiddenBefore is ${body.hiddenBefore}, not an ISO date-time`
+    return body.canUpgrade === canUpgrade
+      ? undefined
+      : `canUpgrade is ${JSON.stringify(body.canUpgrade)}, not ${canUpgrade}`
+  }
+
+/** What is wrong with a body that should say nothing is hidden. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const hidesNothing = (body: any) =>
+  'hiddenBefore' in body || 'canUpgrade' in body
+    ? `carries hiddenBefore ${JSON.stringify(body.hiddenBefore)}, canUpgrade ${JSON.stringify(body.canUpgrade)}`
+    : undefined
+
+const utcDay = (unix: number) => new Date(unix).toISOString().slice(0, 10)
+
+/** What differs from the rows expected, in order, or nothing. */
+const rowsAre = (name: string, rows: unknown, expected: unknown[]) =>
+  JSON.stringify(rows) === JSON.stringify(expected)
+    ? undefined
+    : `${name} is ${JSON.stringify(rows)}, not ${JSON.stringify(expected)}`
+
+/**
+ * What is wrong with an agent report that should hold these agents of the
+ * worker's and no others. A run can cross the reader's midnight, so an agent's
+ * rows are summed: that is how a reader is meant to use them.
+ */
+const agentTimeIs =
+  (
+    expected: (w: ContractWorld) => {
+      agentId: string
+      assistedSeconds: number
+      autonomousSeconds: number
+    }[],
+  ) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (body: any, world: ContractWorld) => {
+    const want = expected(world)
+    const rows = body.daily as {
+      day: string
+      userId: string
+      agentId: string
+      product: string
+      assistedSeconds: number
+      autonomousSeconds: number
+      waitSeconds: number
+    }[]
+    const stray = rows.find(
+      (row) =>
+        row.userId !== world.workerId ||
+        !want.some((agent) => agent.agentId === row.agentId),
+    )
+    if (stray) return `carries a row of ${stray.userId}, ${stray.agentId}`
+    for (const agent of want) {
+      const sum = (key: 'assistedSeconds' | 'autonomousSeconds') =>
+        rows
+          .filter((row) => row.agentId === agent.agentId)
+          .reduce((total, row) => total + row[key], 0)
+      if (
+        sum('assistedSeconds') !== agent.assistedSeconds ||
+        sum('autonomousSeconds') !== agent.autonomousSeconds
+      )
+        return `${agent.agentId} has ${sum('assistedSeconds')} assisted and ${sum('autonomousSeconds')} autonomous seconds`
+    }
+    return undefined
+  }
+
+const share = (body: Record<string, unknown>): ContractRequest => ({
+  method: 'post',
+  path: '/report',
+  body: { ...contractSpan(), ...body },
+})
+
+const open = (report: Pick<ContractReport, 'token'>): ContractRequest => ({
+  method: 'get',
+  path: `/report/public/${report.token}`,
+})
+
+const invoiceOf = (report: ContractReport): ContractRequest => ({
+  method: 'post',
+  path: `/report/${report.id}/invoice`,
+  body: {},
+})
+
+/** Every key a sharer's view of a report has, and no other. */
+const VIEW_KEYS = [
+  'canInvoice',
+  'createdAt',
+  'from',
+  'id',
+  'invoiceId',
+  'projectIds',
+  'showAmounts',
+  'timeZone',
+  'title',
+  'to',
+  'token',
+  'userIds',
+]
+
+/** What is wrong with a sharer's view of a report, or nothing. */
+const viewIs = (
+  view: Record<string, unknown> | undefined,
+  expected: Record<string, unknown>,
+) => {
+  if (!view) return 'the report is not there'
+  const keys = rowsAre('the view’s keys', Object.keys(view).sort(), VIEW_KEYS)
+  if (keys) return keys
+  if (typeof view.token !== 'string' || view.token.length < 32)
+    return `token is ${JSON.stringify(view.token)}`
+  const wrong = Object.keys(expected).filter(
+    (key) => JSON.stringify(view[key]) !== JSON.stringify(expected[key]),
+  )
+  return wrong.length
+    ? wrong
+        .map(
+          (key) =>
+            `${key} is ${JSON.stringify(view[key])}, not ${JSON.stringify(expected[key])}`,
+        )
+        .join(', ')
+    : undefined
+}
+
+/** Every key an opened report has; `amounts` only where it shows money. */
+const REPORT_KEYS = [
+  'agents',
+  'agentsDaily',
+  'createdAt',
+  'daily',
+  'from',
+  'people',
+  'projects',
+  'sharedBy',
+  'timeZone',
+  'title',
+  'to',
+]
+
+/**
+ * What is wrong with an opened report of `project`, or nothing. `people` and
+ * `agents` are the seconds each must add up to, and name everyone the report
+ * may name; with `total` instead, the report names nobody and no agent. A run
+ * or a day's entries can fall either side of the reader's midnight, so rows
+ * are summed.
+ */
+const reportIs = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  body: any,
+  world: ContractWorld,
+  expected: {
+    people?: Record<string, number>
+    agents?: Record<string, number>
+    total?: number
+    amounts?: { peopleCents: number; agentsCents: number }
+  },
+) => {
+  const keys = rowsAre(
+    'the report’s keys',
+    Object.keys(body).sort(),
+    [...REPORT_KEYS, ...(expected.amounts ? ['amounts'] : [])].sort(),
+  )
+  if (keys) return keys
+  if (typeof body.sharedBy !== 'string' || !body.sharedBy)
+    return `sharedBy is ${JSON.stringify(body.sharedBy)}`
+  const projects = rowsAre(
+    'projects',
+    (body.projects as { id: string }[]).map((project) => project.id),
+    [world.project],
+  )
+  if (projects) return projects
+
+  const daily = body.daily as Record<string, unknown>[]
+  const agentsDaily = body.agentsDaily as Record<string, unknown>[]
+  const strayKeys = [
+    ...daily.flatMap((row) =>
+      Object.keys(row).filter(
+        (key) =>
+          !['day', 'projectId', 'userId', 'trackedSeconds'].includes(key),
+      ),
+    ),
+    ...agentsDaily.flatMap((row) =>
+      Object.keys(row).filter(
+        (key) =>
+          !['day', 'projectId', 'userId', 'agentId', 'workedSeconds'].includes(
+            key,
+          ),
+      ),
+    ),
+  ]
+  if (strayKeys.length) return `rows carry ${strayKeys.join(', ')}`
+  if ([...daily, ...agentsDaily].some((row) => row.projectId !== world.project))
+    return 'a row is of another project'
+
+  const sums = (rows: Record<string, unknown>[], by: string, of: string) => {
+    const totals: Record<string, number> = {}
+    for (const row of rows) {
+      const key = String(row[by] ?? '')
+      totals[key] = (totals[key] ?? 0) + Number(row[of])
+    }
+    return totals
+  }
+  const sorted = (totals: Record<string, number>) =>
+    JSON.stringify(Object.entries(totals).sort())
+  const people = expected.people ?? { '': expected.total ?? 0 }
+  const tracked = sums(daily, 'userId', 'trackedSeconds')
+  if (sorted(tracked) !== sorted(people))
+    return `time is ${sorted(tracked)}, not ${sorted(people)}`
+  if (!expected.people && daily.some((row) => 'userId' in row))
+    return 'a row names a person'
+  const worked = sums(agentsDaily, 'agentId', 'workedSeconds')
+  if (sorted(worked) !== sorted(expected.agents ?? {}))
+    return `agent time is ${sorted(worked)}, not ${sorted(expected.agents ?? {})}`
+  if (agentsDaily.some((row) => row.userId !== world.workerId))
+    return 'an agent row is not the worker’s'
+
+  // Everyone and every agent a row names is named once, and nobody else is.
+  const named = (list: { id: string; name: string }[]) =>
+    list.every((item) => typeof item.name === 'string')
+      ? list.map((item) => item.id).sort()
+      : ['a name is missing']
+  return (
+    rowsAre(
+      'people',
+      named(body.people),
+      [
+        ...new Set([
+          ...Object.keys(expected.people ?? {}),
+          ...(Object.keys(expected.agents ?? {}).length
+            ? [world.workerId]
+            : []),
+        ]),
+      ].sort(),
+    ) ??
+    rowsAre(
+      'agents',
+      named(body.agents),
+      Object.keys(expected.agents ?? {}).sort(),
+    ) ??
+    ((body.agents as { userId: string }[]).some(
+      (agent) => agent.userId !== world.workerId,
+    )
+      ? 'an agent is not the worker’s'
+      : undefined) ??
+    (expected.amounts
+      ? rowsAre(
+          'amounts',
+          [body.amounts.peopleCents, body.amounts.agentsCents],
+          [expected.amounts.peopleCents, expected.amounts.agentsCents],
+        )
+      : undefined)
+  )
+}
 
 const projectRead = (w: ContractWorld): ContractRequest => ({
   method: 'post',
@@ -610,6 +969,584 @@ export const CONTRACT_SCENARIOS: ContractScenario[] = [
         : `tracked ${row?.trackedSeconds}, paid ${row?.paidCents}`
     },
   },
+  // Invoiced time: GLOSSARY.md "Invoiced". A viewer's rows above already
+  // carry nothing but the project's time.
+  ...(['worker', 'owner'] as const).map(
+    (role): ContractScenario => ({
+      name: `a ${role}’s period totals say what is invoiced, and what of it is unpaid`,
+      as: role,
+      request: overview,
+      status: 200,
+      check: (body, world) => {
+        const row = rowOf(body.totals, world)
+        // A half hour on a requested invoice, and one un-marked by hand on a
+        // paid one: unpaid is the entry's own state, not its invoice's.
+        return row?.invoicedSeconds === 3600 &&
+          row?.invoicedUnpaidSeconds === 3600
+          ? undefined
+          : `invoiced ${row?.invoicedSeconds}, of it unpaid ${row?.invoicedUnpaidSeconds}`
+      },
+    }),
+  ),
+  {
+    name: 'invoiced time marked paid by hand is invoiced, and not unpaid',
+    as: 'freeOwner',
+    request: freeOverview,
+    status: 200,
+    check: (body, world) => {
+      const row = (body.totals as Record<string, unknown>[]).find(
+        (totals) => totals.projectId === world.freeProject,
+      )
+      return row?.trackedSeconds === 1800 &&
+        row?.invoicedSeconds === 1800 &&
+        row?.invoicedUnpaidSeconds === 0
+        ? undefined
+        : `tracked ${row?.trackedSeconds}, invoiced ${row?.invoicedSeconds}, of it unpaid ${row?.invoicedUnpaidSeconds}`
+    },
+  },
+
+  // Hidden history: SPEC.md "What premium governs"
+  {
+    name: 'a free owner’s totals say from when their plan hides history, and that they can upgrade',
+    as: 'freeOwner',
+    request: freeOverview,
+    status: 200,
+    check: hidesHistory(true),
+  },
+  {
+    name: 'a free owner’s agent report says the same',
+    as: 'freeOwner',
+    request: (w) => ({
+      method: 'post',
+      path: '/statistics/agents/daily',
+      body: statistics({ projectIds: [w.freeProject] }),
+    }),
+    status: 200,
+    check: hidesHistory(true),
+  },
+  {
+    name: 'a period inside the free plan’s window hides nothing',
+    as: 'freeOwner',
+    request: (w) => ({
+      method: 'post',
+      path: '/statistics/overview',
+      body: statistics({ projectIds: [w.freeProject], from: day(-7) }),
+    }),
+    status: 200,
+    check: hidesNothing,
+  },
+  {
+    name: 'a read by invoice hides nothing: an invoice keeps what it covers',
+    as: 'freeOwner',
+    request: (w) => ({
+      method: 'post',
+      path: '/statistics/overview',
+      body: statistics({
+        projectIds: [w.freeProject],
+        invoiceId: w.freeInvoice,
+      }),
+    }),
+    status: 200,
+    check: hidesNothing,
+  },
+  ...(['owner', 'worker', 'viewer'] as const).map(
+    (role): ContractScenario => ({
+      name: `a Premium owner’s project hides nothing from its ${role}`,
+      as: role,
+      request: overview,
+      status: 200,
+      check: hidesNothing,
+    }),
+  ),
+  {
+    name: 'a Premium owner’s agent report hides nothing',
+    as: 'owner',
+    request: agentsDaily(),
+    status: 200,
+    check: hidesNothing,
+  },
+
+  // Agent time: SPEC.md "A worker's agents are the worker's"
+  ...(['owner', 'worker'] as const).map(
+    (role): ContractScenario => ({
+      name: `a ${role} reads agent time by worker and agent`,
+      as: role,
+      request: agentsDaily(),
+      status: 200,
+      check: agentTimeIs((w) => [
+        { agentId: w.agent, assistedSeconds: 1200, autonomousSeconds: 600 },
+        { agentId: w.otherAgent, assistedSeconds: 0, autonomousSeconds: 600 },
+      ]),
+    }),
+  ),
+  {
+    name: 'agent runs are counted over the period, and on the day each started',
+    as: 'owner',
+    request: agentsDaily(),
+    status: 200,
+    check: (body, w) =>
+      rowsAre('runs', body.runs, [
+        { product: 'claude-code', status: 'completed', count: 1 },
+        { product: 'codex', status: 'failed', count: 1 },
+      ]) ??
+      rowsAre('runsDaily', body.runsDaily, [
+        { day: utcDay(w.otherAgentRunFromUnix), status: 'failed', count: 1 },
+        { day: utcDay(w.agentRunFromUnix), status: 'completed', count: 1 },
+      ]),
+  },
+  {
+    name: 'runs are counted by day even when agent time is cut by hour',
+    as: 'owner',
+    request: agentsDaily(() => ({ bucket: 'hour' })),
+    status: 200,
+    check: (body, w) =>
+      (body.daily as { day: string }[]).every((row) =>
+        /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(row.day),
+      )
+        ? rowsAre('runsDaily', body.runsDaily, [
+            {
+              day: utcDay(w.otherAgentRunFromUnix),
+              status: 'failed',
+              count: 1,
+            },
+            { day: utcDay(w.agentRunFromUnix), status: 'completed', count: 1 },
+          ])
+        : 'agent time is not keyed by hour',
+  },
+  {
+    name: 'the agent filter narrows agent time and both run counts',
+    as: 'owner',
+    request: agentsDaily((w) => ({ agentIds: [w.otherAgent] })),
+    status: 200,
+    check: (body, w) =>
+      agentTimeIs((world) => [
+        {
+          agentId: world.otherAgent,
+          assistedSeconds: 0,
+          autonomousSeconds: 600,
+        },
+      ])(body, w) ??
+      rowsAre('runs', body.runs, [
+        { product: 'codex', status: 'failed', count: 1 },
+      ]) ??
+      rowsAre('runsDaily', body.runsDaily, [
+        { day: utcDay(w.otherAgentRunFromUnix), status: 'failed', count: 1 },
+      ]),
+  },
+  {
+    name: 'an empty agent filter narrows nothing',
+    as: 'worker',
+    request: agentsDaily(() => ({ agentIds: [] })),
+    status: 200,
+    check: (body) =>
+      body.runs.length === 2 ? undefined : `counts ${body.runs.length} runs`,
+  },
+  {
+    name: 'a viewer reads no agent time and no runs',
+    as: 'viewer',
+    request: agentsDaily(),
+    status: 200,
+    check: (body) =>
+      rowsAre('daily', body.daily, []) ??
+      rowsAre('runs', body.runs, []) ??
+      rowsAre('runsDaily', body.runsDaily, []),
+  },
+  {
+    name: 'the team report does not read the agent filter',
+    as: 'owner',
+    request: (w) => ({
+      method: 'post',
+      path: '/statistics/team',
+      body: statistics({ projectIds: [w.project], agentIds: [w.otherAgent] }),
+    }),
+    status: 200,
+    check: (body, w) => {
+      const row = (
+        body.rows as { userId: string; agentSeconds: number }[]
+      ).find((person) => person.userId === w.workerId)
+      return row?.agentSeconds === 2400
+        ? undefined
+        : `the worker has ${row?.agentSeconds} agent seconds, not 2400`
+    },
+  },
+
+  // Shared reports: SPEC.md "A shared report is `Statistics` at a link"
+  {
+    name: 'an owner shares a span of everyone’s time, and it heads their list',
+    as: 'owner',
+    request: (w) => share({ projectIds: [w.project], title: '  March  ' }),
+    status: 200,
+    check: (body, w) =>
+      viewIs(body, {
+        title: 'March',
+        ...contractSpan(),
+        projectIds: [w.project],
+        userIds: [],
+        showAmounts: false,
+        invoiceId: null,
+        // Everyone's time is not the owner's own to bill.
+        canInvoice: false,
+      }),
+    after: {
+      as: 'owner',
+      request: () => ({ method: 'get', path: '/report' }),
+      status: 200,
+      check: (body, w, first) =>
+        rowsAre(
+          'the list',
+          (body as { id: string }[]).map((report) => report.id),
+          [first.id, w.ownerReport.id],
+        ),
+    },
+  },
+  {
+    name: 'an owner’s report of themself alone can be invoiced',
+    as: 'owner',
+    request: (w) => share({ projectIds: [w.project], userIds: [w.ownerId] }),
+    status: 200,
+    check: (body, w) =>
+      viewIs(body, { userIds: [w.ownerId], canInvoice: true }),
+  },
+  {
+    name: 'a worker shares their own time, which can be invoiced',
+    as: 'worker',
+    request: (w) => share({ projectIds: [w.project], showAmounts: true }),
+    status: 200,
+    check: (body) => viewIs(body, { showAmounts: true, canInvoice: true }),
+  },
+  {
+    name: 'a worker cannot share someone else’s time',
+    as: 'worker',
+    request: (w) => share({ projectIds: [w.project], userIds: [w.ownerId] }),
+    status: 403,
+  },
+  {
+    name: 'a viewer shares the project’s time, which cannot be invoiced',
+    as: 'viewer',
+    request: (w) => share({ projectIds: [w.project] }),
+    status: 200,
+    check: (body) => viewIs(body, { canInvoice: false }),
+  },
+  {
+    name: 'a viewer cannot share amounts',
+    as: 'viewer',
+    request: (w) => share({ projectIds: [w.project], showAmounts: true }),
+    status: 403,
+  },
+  {
+    name: 'a viewer cannot share one person’s time',
+    as: 'viewer',
+    request: (w) => share({ projectIds: [w.project], userIds: [w.workerId] }),
+    status: 403,
+  },
+  {
+    name: 'an outsider cannot share a project they do not see',
+    as: 'outsider',
+    request: (w) => share({ projectIds: [w.project] }),
+    status: 403,
+  },
+  {
+    name: 'a report keeps the span and the project it was shared with',
+    as: 'freeOwner',
+    request: (w) => share({ projectIds: [w.freeProject], from: day(-7) }),
+    status: 200,
+    check: (body, w) =>
+      viewIs(body, {
+        ...contractSpan(7),
+        projectIds: [w.freeProject],
+        canInvoice: false,
+      }),
+  },
+  {
+    name: 'a report takes the spans statistics takes, and no longer ones',
+    as: 'owner',
+    request: (w) => share({ projectIds: [w.project], from: day(-400) }),
+    status: 400,
+  },
+  {
+    name: 'a report needs a project',
+    as: 'owner',
+    request: () => share({ projectIds: [] }),
+    status: 400,
+  },
+  {
+    name: 'a report’s title carries no markup',
+    as: 'owner',
+    request: (w) => share({ projectIds: [w.project], title: '<b>March</b>' }),
+    status: 400,
+  },
+  {
+    name: 'nobody shares a report without signing in',
+    as: 'anyone',
+    request: (w) => share({ projectIds: [w.project] }),
+    status: 401,
+  },
+  {
+    name: 'the list is the sharer’s own, with what each report can still do',
+    as: 'worker',
+    request: () => ({ method: 'get', path: '/report' }),
+    status: 200,
+    check: (body, w) => {
+      const reports = body as { id: string }[]
+      const ids = reports.map((report) => report.id).sort()
+      const own = [w.workerReport.id, w.invoicedReport.id].sort()
+      if (JSON.stringify(ids) !== JSON.stringify(own))
+        return `lists ${JSON.stringify(ids)}, not ${JSON.stringify(own)}`
+      return (
+        viewIs(
+          reports.find((report) => report.id === w.workerReport.id),
+          {
+            token: w.workerReport.token,
+            invoiceId: null,
+            canInvoice: true,
+          },
+        ) ??
+        viewIs(
+          reports.find((report) => report.id === w.invoicedReport.id),
+          { invoiceId: w.invoice, canInvoice: false },
+        )
+      )
+    },
+  },
+  {
+    name: 'someone who shared nothing lists nothing',
+    as: 'outsider',
+    request: () => ({ method: 'get', path: '/report' }),
+    status: 200,
+    check: (body) => rowsAre('the list', body, []),
+  },
+
+  // The link: open to anyone, read in the sharer's scope
+  {
+    name: 'anyone opens an owner’s link: everyone by name, agents, and amounts where switched on',
+    as: 'anyone',
+    request: (w) => open(w.ownerReport),
+    status: 200,
+    check: (body, w) =>
+      reportIs(body, w, {
+        // Seven half hours at $60, and the attached agent's half hour at $12.
+        people: { [w.workerId]: 10800, [w.ownerId]: 1800 },
+        agents: { [w.agent]: 1800, [w.otherAgent]: 600 },
+        amounts: { peopleCents: 21000, agentsCents: 600 },
+      }) ??
+      ((body.agents as { id: string; name: string }[]).find(
+        (agent) => agent.id === w.agent,
+      )?.name === 'claude-code'
+        ? undefined
+        : 'the agent is not named as its worker names it'),
+  },
+  {
+    name: 'a signed-in stranger opens the same link and reads the same',
+    as: 'outsider',
+    request: (w) => open(w.ownerReport),
+    status: 200,
+    check: (body, w) =>
+      reportIs(body, w, {
+        people: { [w.workerId]: 10800, [w.ownerId]: 1800 },
+        agents: { [w.agent]: 1800, [w.otherAgent]: 600 },
+        amounts: { peopleCents: 21000, agentsCents: 600 },
+      }),
+  },
+  {
+    name: 'a worker’s link shows their own time and agents, and no amounts unless switched on',
+    as: 'anyone',
+    request: (w) => open(w.workerReport),
+    status: 200,
+    check: (body, w) =>
+      reportIs(body, w, {
+        people: { [w.workerId]: 10800 },
+        agents: { [w.agent]: 1800, [w.otherAgent]: 600 },
+      }),
+  },
+  {
+    name: 'a viewer’s link shows the project’s time, with nobody, no agent and no amounts in it',
+    as: 'anyone',
+    request: (w) => open(w.viewerReport),
+    status: 200,
+    check: (body, w) => reportIs(body, w, { total: 12600 }),
+  },
+  {
+    name: 'a deleted report’s link is not found',
+    as: 'anyone',
+    request: (w) => open(w.deletedReport),
+    status: 404,
+  },
+  {
+    name: 'a link that never was one is not found',
+    as: 'anyone',
+    request: () => open({ token: 'A'.repeat(43) }),
+    status: 404,
+  },
+  {
+    name: 'a report’s id does not open it',
+    as: 'owner',
+    request: (w) => open({ token: w.ownerReport.id }),
+    status: 404,
+  },
+  {
+    name: 'a free plan’s report that reaches past 14 days is gone, and says why',
+    as: 'anyone',
+    request: (w) => open(w.freeReport),
+    status: 410,
+    check: (body) =>
+      body.reason === 'retention'
+        ? undefined
+        : `reason is ${JSON.stringify(body.reason)}`,
+  },
+  {
+    name: 'a free plan’s report inside its window opens',
+    as: 'anyone',
+    request: (w) => open(w.freeRecentReport),
+    status: 200,
+    check: (body, w) => {
+      const rows = body.daily as { projectId: string; trackedSeconds: number }[]
+      return rows.length === 1 &&
+        rows[0].projectId === w.freeProject &&
+        rows[0].trackedSeconds === 1800
+        ? undefined
+        : `daily is ${JSON.stringify(rows)}`
+    },
+  },
+
+  // Ending a link, and billing a report
+  {
+    name: 'the sharer deletes a report, and its link is not found',
+    as: 'worker',
+    request: (w) => ({
+      method: 'delete',
+      path: `/report/${w.workerReport.id}`,
+    }),
+    status: 204,
+    after: {
+      as: 'anyone',
+      request: (w) => open(w.workerReport),
+      status: 404,
+    },
+  },
+  {
+    name: 'a deleted report leaves its sharer’s list',
+    as: 'worker',
+    request: (w) => ({
+      method: 'delete',
+      path: `/report/${w.invoicedReport.id}`,
+    }),
+    status: 204,
+    after: {
+      as: 'worker',
+      request: () => ({ method: 'get', path: '/report' }),
+      status: 200,
+      check: (body, w) =>
+        rowsAre(
+          'the list',
+          (body as { id: string }[]).map((report) => report.id),
+          [w.workerReport.id],
+        ),
+    },
+  },
+  {
+    name: 'only its sharer deletes a report',
+    as: 'owner',
+    request: (w) => ({
+      method: 'delete',
+      path: `/report/${w.workerReport.id}`,
+    }),
+    status: 403,
+    after: {
+      as: 'anyone',
+      request: (w) => open(w.workerReport),
+      status: 200,
+    },
+  },
+  {
+    name: 'a report that was deleted cannot be deleted again',
+    as: 'worker',
+    request: (w) => ({
+      method: 'delete',
+      path: `/report/${w.deletedReport.id}`,
+    }),
+    status: 404,
+  },
+  {
+    name: 'a report of the sharer’s own time is invoiced, and remembers its invoice',
+    as: 'worker',
+    request: (w) => invoiceOf(w.workerReport),
+    status: 200,
+    check: (body, w) =>
+      typeof body.id === 'string' && body.id !== w.invoice
+        ? rowsAre('the answer’s keys', Object.keys(body), ['id'])
+        : `the invoice is ${JSON.stringify(body.id)}`,
+    after: {
+      as: 'worker',
+      request: () => ({ method: 'get', path: '/report' }),
+      status: 200,
+      check: (body, w, first) =>
+        viewIs(
+          (body as { id: string }[]).find(
+            (report) => report.id === w.workerReport.id,
+          ),
+          { invoiceId: first.id, canInvoice: false },
+        ),
+    },
+  },
+  {
+    name: 'the invoice made from a report is the sharer’s to read',
+    as: 'worker',
+    request: (w) => invoiceOf(w.workerReport),
+    status: 200,
+    after: {
+      as: 'worker',
+      request: (_w, first) => ({ method: 'get', path: `/invoice/${first.id}` }),
+      status: 200,
+      check: (body, w) =>
+        body.project?.id === w.project && body.state === 'Requested'
+          ? undefined
+          : `the invoice is on ${body.project?.id}, ${body.state}`,
+    },
+  },
+  {
+    name: 'asked twice, a report answers with the one invoice',
+    as: 'worker',
+    request: (w) => invoiceOf(w.workerReport),
+    status: 200,
+    after: {
+      as: 'worker',
+      request: (w) => invoiceOf(w.workerReport),
+      status: 200,
+      check: (body, _w, first) =>
+        body.id === first.id
+          ? undefined
+          : `a second invoice ${body.id}, not ${first.id}`,
+    },
+  },
+  {
+    name: 'a report that has an invoice answers with it',
+    as: 'worker',
+    request: (w) => invoiceOf(w.invoicedReport),
+    status: 200,
+    check: (body, w) =>
+      body.id === w.invoice
+        ? undefined
+        : `the invoice is ${body.id}, not ${w.invoice}`,
+  },
+  {
+    name: 'a report of everyone’s time cannot be invoiced',
+    as: 'owner',
+    request: (w) => invoiceOf(w.ownerReport),
+    status: 400,
+  },
+  {
+    name: 'a viewer’s report cannot be invoiced',
+    as: 'viewer',
+    request: (w) => invoiceOf(w.viewerReport),
+    status: 400,
+  },
+  {
+    name: 'only its sharer invoices a report',
+    as: 'owner',
+    request: (w) => invoiceOf(w.workerReport),
+    status: 403,
+  },
+
   {
     name: 'a viewer cannot read window titles',
     as: 'viewer',
@@ -664,5 +1601,21 @@ export async function runScenario(
     return `status ${response.status}, not ${scenario.status}: ${JSON.stringify(response.body)?.slice(0, 200)}`
   }
 
-  return scenario.check?.(response.body, world)
+  const wrong = scenario.check?.(response.body, world)
+
+  if (wrong || !scenario.after) return wrong
+
+  const { after } = scenario
+  const second = await adapter.send(
+    after.as,
+    after.request(world, response.body),
+  )
+
+  if (second.status !== after.status) {
+    return `afterwards, status ${second.status}, not ${after.status}: ${JSON.stringify(second.body)?.slice(0, 200)}`
+  }
+
+  const stillWrong = after.check?.(second.body, world, response.body)
+
+  return stillWrong && `afterwards, ${stillWrong}`
 }

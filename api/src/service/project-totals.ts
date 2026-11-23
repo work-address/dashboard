@@ -7,6 +7,7 @@ import { Time } from '@/entity/time'
 import { User } from '@/entity/user'
 import { EInvoiceState } from '@/model/invoice'
 import { ITimeTotals } from '@/model/time'
+import { TimeRepository } from '@/repository/time-repository'
 import { ProjectAccess, ProjectRole } from '@/service/project-access'
 
 /**
@@ -34,6 +35,10 @@ export interface IProjectFigures {
   mouseDistance?: number
   paidSeconds?: number
   unpaidSeconds?: number
+  /** Invoiced time (GLOSSARY.md), whatever its paid state. */
+  invoicedSeconds?: number
+  /** The part of the invoiced time that is not marked paid. */
+  invoicedUnpaidSeconds?: number
   rateHour?: number
   earnedCents?: number
   paidCents?: number
@@ -50,7 +55,9 @@ type EntrySums = Record<
   | 'mouse'
   | 'distance'
   | 'paid'
-  | 'handPaid',
+  | 'handPaid'
+  | 'invoiced'
+  | 'invoicedUnpaid',
   number
 >
 
@@ -65,6 +72,8 @@ const NOTHING: EntrySums = {
   distance: 0,
   paid: 0,
   handPaid: 0,
+  invoiced: 0,
+  invoicedUnpaid: 0,
 }
 
 /** An entry's span: a backwards entry counts as nothing. */
@@ -81,6 +90,7 @@ const ACTIVE = `LEAST(${SECONDS}, GREATEST(0, COALESCE(time."minutesActive",0)*6
 @injectable()
 export class ProjectTotals {
   @inject('ProjectAccess') protected access: ProjectAccess
+  @inject('TimeRepository') protected times: TimeRepository
 
   public async read(
     projects: Project[],
@@ -170,6 +180,8 @@ export class ProjectTotals {
       mouseDistance: sums.distance,
       paidSeconds: Math.round(sums.paid),
       unpaidSeconds: Math.round(unpaid),
+      invoicedSeconds: Math.round(sums.invoiced),
+      invoicedUnpaidSeconds: Math.round(sums.invoicedUnpaid),
       rateHour,
       earnedCents: priced(sums.tracked),
       // A paid invoice counts through its amount, whatever its entries say
@@ -189,6 +201,8 @@ export class ProjectTotals {
       .filter(({ role }) => role !== 'worker')
       .map(({ project }) => project.id)
     const detail = this.access.detailSql()
+    // The entry list's own rule, so a total and the list cannot disagree.
+    const invoiced = this.times.invoicedSql()
     const when = (condition: string, value: string) =>
       `COALESCE(SUM(CASE WHEN ${condition} THEN ${value} ELSE 0 END),0)`
     const onSettled = `settled.id = time."invoiceId" AND settled.state = :paidState`
@@ -230,6 +244,11 @@ export class ProjectTotals {
         when('COALESCE(time."isPaid", false) AND settled.id IS NULL', SECONDS),
         'handPaid',
       )
+      .addSelect(when(invoiced, SECONDS), 'invoiced')
+      .addSelect(
+        when(`NOT COALESCE(time."isPaid", false) AND ${invoiced}`, SECONDS),
+        'invoicedUnpaid',
+      )
       .groupBy('project.id')
 
     if (span.invoiceId) {
@@ -258,6 +277,8 @@ export class ProjectTotals {
           distance: Number(row.distance),
           paid: Number(row.paid),
           handPaid: Number(row.handPaid),
+          invoiced: Number(row.invoiced),
+          invoicedUnpaid: Number(row.invoicedUnpaid),
         },
       ]),
     )

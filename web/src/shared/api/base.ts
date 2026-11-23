@@ -179,3 +179,6 @@ client.instance.interceptors.response.use(
 )
 
 export * as baseApi from './generated'
+
+/** The same client the generated calls use, for a route they do not cover yet. */
+export { client as apiClient } from './generated/client.gen'

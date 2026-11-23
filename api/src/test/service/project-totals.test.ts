@@ -2,6 +2,7 @@ import { suite, test } from '@testdeck/mocha'
 import { expect } from 'chai'
 import moment from 'moment'
 
+import { Invoice } from '@/entity/invoice'
 import { Project } from '@/entity/project'
 import { Time } from '@/entity/time'
 import { User } from '@/entity/user'
@@ -255,6 +256,125 @@ export class ProjectTotalsTest extends AbstractDatabaseIntegration {
     await runPromise(this.invoices.reject(invoice, owner, 'wrong hours'))
 
     expect((await this.one(project, worker)).paidCents).to.equal(0)
+  }
+
+  /** GLOSSARY.md, "Invoiced": on an invoice of its author's, not rejected. */
+  @test()
+  async invoicedTimeIsWhatAnInvoiceThatStandsCovers() {
+    const { owner, worker, colleague, viewer, project } = await this.world()
+    await this.hour(project, worker)
+    await this.hour(project, worker, { isPaid: true })
+    const requested = await this.hour(project, worker)
+    await this.billed(project, worker, [requested])
+    const settled = await this.hour(project, worker)
+    await runPromise(
+      this.invoices.markPaid(
+        await this.billed(project, worker, [settled]),
+        worker,
+      ),
+    )
+    // A rejected invoice covers nothing: its hour is loose again.
+    const refused = await this.hour(project, worker)
+    await runPromise(
+      this.invoices.reject(
+        await this.billed(project, worker, [refused]),
+        owner,
+        'wrong hours',
+      ),
+    )
+    const theirs = await this.hour(project, colleague)
+    await this.billed(project, colleague, [theirs])
+
+    expect(await this.one(project, worker)).to.include({
+      trackedSeconds: 5 * HOUR,
+      invoicedSeconds: 2 * HOUR,
+      invoicedUnpaidSeconds: HOUR,
+    })
+    expect(await this.one(project, colleague)).to.include({
+      invoicedSeconds: HOUR,
+      invoicedUnpaidSeconds: HOUR,
+    })
+    expect(await this.one(project, owner)).to.include({
+      invoicedSeconds: 3 * HOUR,
+      invoicedUnpaidSeconds: 2 * HOUR,
+    })
+    const viewed = await this.one(project, viewer)
+    expect(viewed).to.not.have.property('invoicedSeconds')
+    expect(viewed).to.not.have.property('invoicedUnpaidSeconds')
+
+    // The same figures by span and by person, and none of them all-time.
+    const [narrowed] = await this.totals.read([project], owner, {
+      from: moment.utc().subtract(1, 'day').toDate(),
+      userIds: [colleague.id],
+    })
+    expect(narrowed).to.include({
+      invoicedSeconds: HOUR,
+      invoicedUnpaidSeconds: HOUR,
+    })
+    const [allTime] = await this.totals.readAllTime(project, worker)
+    expect(allTime).to.not.have.property('invoicedSeconds')
+  }
+
+  /** Unpaid is the entry's own `isPaid`, which a hand-mark moves either way. */
+  @test()
+  async invoicedUnpaidFollowsTheEntryNotItsInvoice() {
+    const { worker, project } = await this.world()
+    const handPaid = await this.hour(project, worker)
+    await this.billed(project, worker, [handPaid])
+    await runPromise(
+      this.timeManager.setIsPaidMany([handPaid.id], true, worker),
+    )
+
+    expect(await this.one(project, worker)).to.include({
+      invoicedSeconds: HOUR,
+      invoicedUnpaidSeconds: 0,
+    })
+
+    const unmarked = await this.hour(project, worker)
+    await runPromise(
+      this.invoices.markPaid(
+        await this.billed(project, worker, [unmarked]),
+        worker,
+      ),
+    )
+    await runPromise(
+      this.timeManager.setIsPaidMany([unmarked.id], false, worker),
+    )
+
+    expect(await this.one(project, worker)).to.include({
+      invoicedSeconds: 2 * HOUR,
+      invoicedUnpaidSeconds: HOUR,
+    })
+  }
+
+  /**
+   * The entry list's rule, not a second one: an invoice older than frozen
+   * lines covers its author's entries inside its period, and nobody else's.
+   */
+  @test()
+  async anInvoiceWithoutLinesCoversItsAuthorsEntriesInItsPeriod() {
+    const { owner, worker, colleague, project } = await this.world()
+    const billed = await this.hour(project, worker)
+    const invoice = await this.billed(project, worker, [billed])
+    const inPeriod = await this.hour(project, worker)
+    const theirs = await this.hour(project, colleague)
+    await this.conn
+      .getRepository(Invoice)
+      .update(invoice.id, { lines: null, fromAt: theirs.fromAt })
+
+    expect(inPeriod.invoiceId ?? null).to.equal(null)
+    expect(await this.one(project, worker)).to.include({
+      trackedSeconds: 2 * HOUR,
+      invoicedSeconds: 2 * HOUR,
+      invoicedUnpaidSeconds: 2 * HOUR,
+    })
+    expect(await this.one(project, colleague)).to.include({
+      invoicedSeconds: 0,
+    })
+    expect(await this.one(project, owner)).to.include({
+      trackedSeconds: 3 * HOUR,
+      invoicedSeconds: 2 * HOUR,
+    })
   }
 
   /** Agent time has no minutes here: its money arrives on the invoice. */

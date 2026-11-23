@@ -221,7 +221,7 @@
           "lines"
         ],
         "example": {
-          "id": "d46149e6-9a3c-4d5c-9631-8afac67b29c4"
+          "id": "c788ac48-cf51-4887-ac07-4dcc7d0d571f"
         }
       },
       "ProjectStatistics": {
@@ -282,7 +282,7 @@
           "period"
         ],
         "example": {
-          "id": "7ecef9f5-06a1-486e-9edb-17857026338d"
+          "id": "72d79291-1983-4812-bacb-7106c13e8f46"
         }
       },
       "Time": {
@@ -475,7 +475,7 @@
           "toAt"
         ],
         "example": {
-          "id": "80a2187d-23fb-4969-abd0-7cf0481d8d82"
+          "id": "a6c43db5-8def-4e3f-a3a7-2129fc08a5d2"
         }
       },
       "Project": {
@@ -606,7 +606,7 @@
           "state"
         ],
         "example": {
-          "id": "021135b1-8761-4cf2-986c-deaf89e072ac"
+          "id": "5fd8057c-8821-4d56-8bb6-087f88635272"
         }
       },
       "User": {
@@ -729,7 +729,7 @@
         },
         "type": "object",
         "example": {
-          "id": "088d8869-f8c2-48a6-ae6f-1821ace06b54"
+          "id": "cccc97f2-2c77-43ec-be07-d686f75b2007"
         }
       },
       "AdminUserSearchFilterDto": {
@@ -1074,6 +1074,33 @@
             "maximum": 1000000,
             "type": "integer",
             "minimum": 0
+          },
+          "userId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "agentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "timer",
+              "fixed"
+            ]
+          },
+          "status": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "sessionId": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "runKey": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
           }
         },
         "type": "object"
@@ -1119,6 +1146,14 @@
               "day",
               "hour"
             ]
+          },
+          "agentIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100
           }
         },
         "type": "object",
@@ -1126,6 +1161,54 @@
           "from",
           "to",
           "timeZone"
+        ]
+      },
+      "SharedReportCreateDto": {
+        "properties": {
+          "title": {
+            "pattern": "^[^<>\\p{Cc}]*$",
+            "type": "string",
+            "maxLength": 120
+          },
+          "from": {
+            "maxLength": 10,
+            "type": "string"
+          },
+          "to": {
+            "maxLength": 10,
+            "type": "string"
+          },
+          "timeZone": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "projectIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1
+          },
+          "userIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100
+          },
+          "showAmounts": {
+            "type": "boolean"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "timeZone",
+          "projectIds"
         ]
       },
       "AuthForgotPasswordDto": {
@@ -3553,7 +3636,7 @@
             "description": "Successful response"
           }
         },
-        "summary": "Agent time per day and product, assisted and autonomous, and run counts",
+        "summary": "Agent time per day, worker and agent, assisted and autonomous, and run counts over the period and by the day each started",
         "tags": [
           "Statistics"
         ],
@@ -3633,6 +3716,154 @@
         "summary": "App summary, daily, ranking, titles, workers or projects",
         "tags": [
           "Statistics"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/report": {
+      "post": {
+        "operationId": "ReportController.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedReportCreateDto"
+              }
+            }
+          },
+          "description": "",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "Successful response"
+          }
+        },
+        "summary": "Share a span of what the caller sees in statistics, at a link anyone can open",
+        "tags": [
+          "Report"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "ReportController.list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "Successful response"
+          }
+        },
+        "summary": "The caller's own shared reports, newest first",
+        "tags": [
+          "Report"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/report/public/{token}": {
+      "get": {
+        "operationId": "ReportController.open",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "pattern": "[^\\/#\\?]+?",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "Successful response"
+          }
+        },
+        "summary": "A shared report by its link's secret, read now in the sharer's scope: time by day, project, person and agent, and amounts only if the sharer switched them on. 404 for a link that is unknown or deleted, 410 while a plan hides part of its span",
+        "tags": [
+          "Report"
+        ],
+        "security": []
+      }
+    },
+    "/api/report/{id}": {
+      "delete": {
+        "operationId": "ReportController.remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "pattern": "[^\\/#\\?]+?",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "Successful response"
+          }
+        },
+        "summary": "Delete one of the caller's shared reports, which ends its link",
+        "tags": [
+          "Report"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/report/{id}/invoice": {
+      "post": {
+        "operationId": "ReportController.invoice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "pattern": "[^\\/#\\?]+?",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "Successful response"
+          }
+        },
+        "summary": "Invoice the period of a report of the caller's own time on one project; answers the invoice's id, the same one however often it is asked",
+        "tags": [
+          "Report"
         ],
         "security": [
           {
@@ -5298,7 +5529,7 @@
               },
               "example": {
                 "filter": {
-                  "projectId": "72eda3fa-91d8-4694-a143-39fbc09ace6f"
+                  "projectId": "9d957dc0-2680-4d4b-be03-1c959b94ce45"
                 },
                 "sort": {
                   "fromAt": "DESC"
@@ -5366,8 +5597,8 @@
                 "$ref": "#/components/schemas/InvoiceCreateDto"
               },
               "example": {
-                "fromUnix": 1794523558899,
-                "toUnix": 1794609958899
+                "fromUnix": 1795356440336,
+                "toUnix": 1795442840336
               }
             }
           },
@@ -5760,7 +5991,7 @@
           "content": {
             "application/json": {
               "example": {
-                "nonce": "beca0e7c-e503-43f8-8f97-dbda4a7aa7fe"
+                "nonce": "ced99453-3877-42ae-918a-86d1d00088f1"
               },
               "schema": {
                 "properties": {
@@ -5805,7 +6036,7 @@
           "content": {
             "application/json": {
               "example": {
-                "nonce": "359dfbf8-156a-4c2b-9655-5f65bdeaa87d"
+                "nonce": "5e3e7de7-40e5-44b4-8eb3-9b083ae10b2e"
               },
               "schema": {
                 "properties": {
@@ -5846,21 +6077,21 @@
                 "examples": {
                   "init": {
                     "value": {
-                      "nonce": "e9385c8c-6181-434b-8312-21db94af0550",
+                      "nonce": "6a0b3a30-fa68-4998-8a90-7e770d55b8bc",
                       "ip": "127.0.0.1",
                       "state": "Initialization"
                     }
                   },
                   "login": {
                     "value": {
-                      "nonce": "7e9830a9-3020-4e23-b0ec-9255591504b7",
+                      "nonce": "0ad87eb6-2b6d-480b-8cda-64a9e822372f",
                       "ip": "127.0.0.1",
                       "state": "Login"
                     }
                   },
                   "connected": {
                     "value": {
-                      "nonce": "088cd948-3f26-4a15-80a6-ed0e7c52d9a1",
+                      "nonce": "d4001944-0ff7-455d-bd3f-fc657dc801bc",
                       "ip": "127.0.0.1",
                       "state": "Connected",
                       "jwt": {

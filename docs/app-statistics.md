@@ -223,9 +223,23 @@ All routes are new contracts with the `/api` prefix. Each takes `{projectIds, fr
 | `POST /api/statistics/apps/titles` | For one app: titles and domains with seconds | Owner; worker for their own entries. Never viewers |
 | `POST /api/statistics/apps/workers` | Seconds per worker per app | Owner only |
 | `POST /api/statistics/apps/projects` | Top apps per project for the dashboard, in one request | Per project, as above |
-| `POST /api/statistics/agents/daily` | Billed minutes per day per agent, split into assisted and autonomous; tokens per day | Owner: all. Worker: own. Never viewers |
+| `POST /api/statistics/agents/daily` | `daily`: assisted, autonomous and wait seconds per day, worker and agent (`day`, `userId`, `agentId`, `product`), an agent's overlapping runs merged as on invoice lines, so a product's or a day's figure is the sum of its rows; `runs`: run counts per product and status over the period; `runsDaily`: run counts per status on the day each run started, always by day. `agentIds` narrows all three; `bucket: 'hour'` cuts `daily` by the hour. No tokens yet | Owner: all. Worker: own. Never viewers |
 
 The agent runs table reuses the agent plan's `POST /api/agent-tracking/search`. `GET /api/project/:id/stats/:period` is removed with the cache.
+
+`overview` and `agents/daily` also say when a plan hides part of the period asked for: `hiddenBefore`, an ISO instant, and `canUpgrade`, true when the reader owns a project that hides it. The limit is each project owner's (`Plan.keptFrom`); the latest one the period reaches past is reported. Both fields are absent when nothing is hidden, and on a read by `invoiceId`, since an invoice keeps what it covers. `overview` rows carry `invoicedSeconds` and `invoicedUnpaidSeconds` for owners and workers.
+
+### Shared reports
+
+Added on 23 November 2026. A shared report ([SPEC.md](../SPEC.md), "A shared report is `Statistics` at a link") stores a statistics query and a secret, never figures. Its link reads the same scope, as its sharer, each time it is opened.
+
+| Route | Returns | Access |
+| --- | --- | --- |
+| `POST /api/report` | Takes `{title?, from, to, timeZone, projectIds, userIds?, showAmounts?}` and answers the report as its sharer reads it back: those fields with `id`, `token`, `createdAt`, `invoiceId` and `canInvoice`. Refuses what `statistics` would refuse the same reader, and `showAmounts` when they only view one of the projects | Anyone signed in, for what they see |
+| `GET /api/report` | The caller's reports, newest first | The sharer |
+| `DELETE /api/report/:id` | 204, and the link stops answering | The sharer |
+| `POST /api/report/:id/invoice` | `{id}` of the invoice for the report's period on its one project, made by the invoice's own range rules; the same id however often it is asked. 400 unless `canInvoice`: one project, no invoice yet, and the sharer's own time, which a worker's report always is and an owner's only when it names them alone | The sharer |
+| `GET /api/report/public/:token` | `title`, `sharedBy`, the span, and what the sharer sees now: `projects`, `daily` (tracked seconds per day and project, and per person where the sharer may see that split), `agentsDaily` (worked seconds per day, project and agent), `people` and `agents` naming the ids in those rows, and `amounts` at current rates only if the sharer switched them on and may see money on every project. No detail. 404 for a link that is unknown or deleted, or once the sharer sees none of its projects; 410 with `reason: 'retention'` while a plan hides part of its span; 429 past 60 openings at once from one address | Anyone with the link; no session is read |
 
 ### Visibility
 

@@ -10,6 +10,7 @@
 import {
   StatisticsInsights,
   TimeSpans,
+  hiddenHistory,
   projectsForPeople,
   refusesQuery,
   refusesReport,
@@ -20,10 +21,13 @@ import {
 } from '@work-address/statistics-core'
 
 import {
+  agentIdOf,
   hasDetail,
+  isInvoiced,
   isOwner,
   isPublished,
   isWorker,
+  ownerPremium,
   projectOf,
   roleOf,
   userOf,
@@ -41,15 +45,20 @@ export type StatisticsQuery = {
   invoiceId?: string
   app?: string
   bucket?: 'day' | 'hour'
+  /** Read by `agents/daily` alone. The demo's ids: `agentIdOf` in shape.ts. */
+  agentIds?: string[]
 }
 
 /** A refusal with the status the API would answer. */
 export class DemoHttpError extends Error {
   status: number
+  /** Why, where the API's answer says so: a shared report a plan hides. */
+  reason?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, reason?: string) {
     super(message)
     this.status = status
+    this.reason = reason
   }
 }
 
@@ -67,6 +76,9 @@ type Scope = {
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 
+/** `FREE_RETENTION_DAYS` in the API's model/plan.ts. */
+const FREE_RETENTION_MS = 14 * 86_400_000
+
 /** Whether a report is refused to this scope's reader. */
 export const reportRefused = (scope: Scope, kind: string) =>
   refusesReport(
@@ -74,12 +86,13 @@ export const reportRefused = (scope: Scope, kind: string) =>
     scope.projects.map((project) => roleOf(project, scope.meId)),
   )
 
-export function statisticsScope(
-  db: Db,
-  meId: string,
-  query: StatisticsQuery,
-  now = Date.now(),
-): Scope {
+/** The query's days as instants in its time zone, or the API's refusal. */
+function period(query: StatisticsQuery): { from: number; to: number } {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: query.timeZone })
+  } catch {
+    throw new DemoHttpError(400, 'Invalid timezone')
+  }
   if (!DAY.test(query.from ?? '') || !DAY.test(query.to ?? '')) {
     throw new DemoHttpError(
       400,
@@ -94,6 +107,64 @@ export function statisticsScope(
       'Use a date range of at most 366 days; to is exclusive',
     )
   }
+  return { from, to }
+}
+
+const scopeOf = (
+  db: Db,
+  meId: string,
+  query: StatisticsQuery,
+  projects: MockProject[],
+  span: { from: number; to: number },
+  now: number,
+): Scope => ({
+  db,
+  meId,
+  query,
+  projects,
+  ...span,
+  owners: new Set(projects.filter((p) => isOwner(p, meId)).map((p) => p.id)),
+  viewers: new Set(
+    projects.filter((p) => !isWorker(db, p, meId)).map((p) => p.id),
+  ),
+  now,
+})
+
+/**
+ * What is left today of a scope kept from earlier, as a shared report keeps
+ * one (`StatisticsManager.remainingScope`): the projects its reader no longer
+ * sees drop out, with those its people filter no longer applies to. Nothing
+ * when none is left.
+ */
+export function remainingScope(
+  db: Db,
+  meId: string,
+  query: StatisticsQuery,
+  now = Date.now(),
+): Scope | null {
+  const span = period(query)
+  const visible = visibleProjects(db, meId)
+  const role = (project: MockProject): ReaderRole => roleOf(project, meId)
+  const projects = projectsForPeople(
+    [...new Set(query.projectIds ?? [])].flatMap((id) =>
+      visible.filter((project) => project.id === id),
+    ),
+    role,
+    meId,
+    query.userIds,
+  )
+  return projects.length > 0 && !refusesQuery(projects, role, meId, query)
+    ? scopeOf(db, meId, query, projects, span, now)
+    : null
+}
+
+export function statisticsScope(
+  db: Db,
+  meId: string,
+  query: StatisticsQuery,
+  now = Date.now(),
+): Scope {
+  const span = period(query)
   const visible = visibleProjects(db, meId)
   const role = (project: MockProject): ReaderRole => roleOf(project, meId)
   let projects: MockProject[]
@@ -111,19 +182,7 @@ export function statisticsScope(
   if (refusesQuery(projects, role, meId, query)) {
     throw new DemoHttpError(403, 'Access denied')
   }
-  return {
-    db,
-    meId,
-    query,
-    projects,
-    from,
-    to,
-    owners: new Set(projects.filter((p) => isOwner(p, meId)).map((p) => p.id)),
-    viewers: new Set(
-      projects.filter((p) => !isWorker(db, p, meId)).map((p) => p.id),
-    ),
-    now,
-  }
+  return scopeOf(db, meId, query, projects, span, now)
 }
 
 const seconds = (time: MockTime) =>
@@ -258,6 +317,7 @@ export function projectFigures(
       ),
     )
     const unpaid = Math.max(0, tracked - paid)
+    const invoiced = entries.filter(isInvoiced)
     const rateHourCents = Math.round(Number(project.rateHour) * 100)
     const priced = (s: number) => Math.round((s * rateHourCents) / 3600)
     rows.push({
@@ -280,6 +340,10 @@ export function projectFigures(
       mouseDistance: sum('mouseDistance'),
       paidSeconds: Math.round(paid),
       unpaidSeconds: Math.round(unpaid),
+      invoicedSeconds: Math.round(total(invoiced)),
+      invoicedUnpaidSeconds: Math.round(
+        total(invoiced.filter((time) => !time.isPaid)),
+      ),
       rateHour: Number(project.rateHour),
       earnedCents: priced(tracked),
       paidCents:
@@ -372,10 +436,31 @@ export function apps(scope: Scope, kind: string) {
   )
 }
 
+/**
+ * What the period asks for and a plan hides, on the API's terms
+ * (`StatisticsManager.hiddenHistory`): the limit is each project owner's, and
+ * a read by invoice hides nothing. The demo's Free plan is its visitor's, so
+ * it shows on the projects they own. The demo only says so: its seed keeps
+ * the older time in place.
+ */
+export const hidden = (scope: Scope) =>
+  scope.query.invoiceId
+    ? {}
+    : hiddenHistory(
+        scope.projects.map((project) => ({
+          keptFrom: ownerPremium(scope.db, project)
+            ? null
+            : scope.now - FREE_RETENTION_MS,
+          owned: isOwner(project, scope.meId),
+        })),
+        scope.from,
+      )
+
 export const overview = (scope: Scope) => ({
   totals: totals(scope),
   apps: apps(scope, 'projects'),
   gaps: [],
+  ...hidden(scope),
 })
 
 export function timeDaily(scope: Scope) {
@@ -438,14 +523,28 @@ export const insightsMe = (
   now = Date.now(),
 ) => StatisticsInsights.me(ownEntries(db, meId, query, now), query.timeZone)
 
-/** Runs every worker made on owned projects, the reader's own elsewhere, none on viewed ones. */
-function agentRuns(scope: Scope, only?: Set<string>) {
+/**
+ * Runs every worker made on owned projects, the reader's own elsewhere, none
+ * on viewed ones; `only` narrows them to some projects, or to some agents.
+ * Each goes by the demo's agent id, so one agent's overlapping runs count once.
+ */
+function agentRuns(
+  scope: Scope,
+  only: { projectIds?: Set<string>; agentIds?: string[] } = {},
+) {
   const users = scope.query.userIds?.length
     ? new Set(scope.query.userIds)
     : null
+  const agents = only.agentIds?.length ? new Set(only.agentIds) : null
   const ids = new Set(scope.projects.map((p) => p.id))
-  return scope.db.runs.filter((run) => {
-    if (!ids.has(run.projectId) || (only && !only.has(run.projectId))) {
+  const visible = scope.db.runs.filter((run) => {
+    if (
+      !ids.has(run.projectId) ||
+      (only.projectIds && !only.projectIds.has(run.projectId))
+    ) {
+      return false
+    }
+    if (agents && !agents.has(agentIdOf(run))) {
       return false
     }
     if (scope.viewers.has(run.projectId)) {
@@ -464,10 +563,11 @@ function agentRuns(scope: Scope, only?: Set<string>) {
       Date.parse(run.toAt) > scope.from && Date.parse(run.fromAt) < scope.to
     )
   })
+  return visible.map((run) => ({ ...run, agentId: agentIdOf(run) }))
 }
 
 export function agentsDaily(scope: Scope) {
-  const runs = agentRuns(scope)
+  const runs = agentRuns(scope, { agentIds: scope.query.agentIds })
   const people = new Set(runs.map((run) => run.userId))
   const projects = new Set(runs.map((run) => run.projectId))
   const human = scope.db.times
@@ -509,6 +609,8 @@ export function agentsDaily(scope: Scope) {
       (a, b) =>
         a.product.localeCompare(b.product) || a.status.localeCompare(b.status),
     ),
+    runsDaily: StatisticsInsights.runsDaily(runs, scope.query.timeZone),
+    ...hidden(scope),
   }
 }
 
@@ -561,7 +663,7 @@ export function team(scope: Scope) {
     }
   }
   const byAgent = new Map<string, Span[]>()
-  for (const run of agentRuns(scope, scope.owners)) {
+  for (const run of agentRuns(scope, { projectIds: scope.owners })) {
     const key = `${run.userId}|${run.agentId}`
     byAgent.set(key, [
       ...(byAgent.get(key) ?? []),
@@ -584,5 +686,85 @@ export function team(scope: Scope) {
         agentSeconds: Math.round(r.agentSeconds),
       }))
       .sort((a, b) => a.name.localeCompare(b.name)),
+  }
+}
+
+/**
+ * What a shared report shows of a scope, on the terms of the API's
+ * `StatisticsManager.sharedFigures`: time by day and project, by person and
+ * agent where the scope's reader may see that, a name for every id in those
+ * rows, and amounts at today's rates only when asked for and the reader may
+ * see money on every project. Never detail.
+ */
+export function sharedFigures(scope: Scope, withAmounts: boolean) {
+  const { db, query } = scope
+  const daily = StatisticsInsights.dailyByPerson(
+    baseEntries(scope)
+      .filter((time) => countable(scope, time))
+      .map((time) => ({
+        day: dayOf(time.fromAt, query.timeZone),
+        projectId: time.projectId,
+        userId: time.userId,
+        trackedSeconds: seconds(time),
+      })),
+    scope.viewers,
+  )
+  const runs = agentRuns(scope)
+  const agentsDaily = StatisticsInsights.agentWorkedDaily(
+    runs,
+    [scope.from, scope.to],
+    query.timeZone,
+  )
+  const byName = (
+    a: { name: string; id: string },
+    b: { name: string; id: string },
+  ) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+  const named = new Set([
+    ...daily.flatMap((row) => (row.userId ? [row.userId] : [])),
+    ...agentsDaily.map((row) => row.userId),
+  ])
+  const agents = new Map(
+    agentsDaily.map(({ userId, agentId }) => [
+      agentId,
+      {
+        id: agentId,
+        // The demo's agent is named for its product, as on the Team page.
+        name: runs.find((run) => run.agentId === agentId)?.product ?? '',
+        userId,
+      },
+    ]),
+  )
+
+  return {
+    projects: scope.projects
+      .map(({ id, title }) => ({ id, title }))
+      .sort(
+        (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
+      ),
+    people: [...named]
+      .map((id) => {
+        const user = userOf(db, id)
+
+        return { id, name: user?.name || user?.address || id }
+      })
+      .sort(byName),
+    agents: [...agents.values()].sort(byName),
+    daily,
+    agentsDaily,
+    ...(withAmounts && scope.viewers.size === 0
+      ? {
+          amounts: {
+            peopleCents: totals(scope).reduce(
+              (cents, row) => cents + Number(row.earnedCents ?? 0),
+              0,
+            ),
+            agentsCents: StatisticsInsights.agentCents(
+              agentsDaily,
+              ({ projectId, agentId }) =>
+                projectOf(db, projectId)?.agentRates?.[agentId] ?? 0,
+            ),
+          },
+        }
+      : {}),
   }
 }

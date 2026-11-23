@@ -72,6 +72,10 @@ _Avoid_: Stats, project summary
 Which Entries and runs a reader counts over a span, under one of four named rules: time, published detail, own entries and runs.
 _Avoid_: Visibility, access filter
 
+**Shared report**:
+A reader's time and agent figures for a fixed span, opened at a link by anyone, signed in or not. It is read in the sharer's scope each time it is opened and keeps no copy. People see it named "Report".
+_Avoid_: Timesheet, statement, proof of work, invoice report
+
 **Paid time**:
 Every `isPaid` minute in the reader's scope, however it came to be marked.
 _Avoid_: Settled time, billed time

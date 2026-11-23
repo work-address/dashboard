@@ -7,6 +7,14 @@
 import { http, HttpResponse, delay, type HttpHandler } from 'msw'
 
 import { spanMinutes } from './db'
+import {
+  listReports,
+  openReport,
+  ownReport,
+  reportPeriod,
+  reportView,
+  shareReport,
+} from './reports'
 import { DEMO_ACCESS_TOKEN, DEMO_REFRESH_TOKEN, signInDemo } from './session'
 import {
   readDemoSettings,
@@ -16,6 +24,7 @@ import {
 import {
   canListEntry,
   hasDetail,
+  isInvoiced,
   isOwner,
   isViewer,
   isPublished,
@@ -145,6 +154,7 @@ function route(
             // The name the API gives a missing record: it is what the pages
             // tell "not found" from "failed" by (getLoadFailureKind).
             name: error.status === 404 ? 'NotFoundError' : 'DemoError',
+            ...(error.reason ? { reason: error.reason } : {}),
           },
           { status: error.status },
         )
@@ -369,7 +379,7 @@ function searchTimes({ db, meId, body }: Ctx) {
 /** Entries the reader may change: their own record, nobody else's. */
 /** SPEC.md "An invoiced entry keeps its detail": the whole batch is refused. */
 function keepInvoiced(times: MockTime[]) {
-  if (times.some((time) => time.invoiceId)) {
+  if (times.some(isInvoiced)) {
     fail(
       400,
       'This time is on an invoice, so its detail stays unless the invoice is rejected',
@@ -447,6 +457,74 @@ function setInvoiceState(
     })
   }
   return saveRow('invoices', next)
+}
+
+/**
+ * Issues an invoice for the caller's unpaid, uninvoiced time on a project: the
+ * entries chosen, those inside a range, or everything outstanding - where,
+ * with nothing left to bill, the latest invoice stands.
+ */
+function issueInvoice(
+  db: Db,
+  meId: string,
+  project: MockProject,
+  chosen: { timeIds?: string[]; fromUnix?: number; toUnix?: number },
+): MockInvoice | null {
+  const wanted = new Set(chosen.timeIds ?? [])
+  const { fromUnix: from, toUnix: to } = chosen
+  const ranged = wanted.size === 0 && from !== undefined && to !== undefined
+  const entries = db.times
+    .filter(
+      (t) =>
+        t.projectId === project.id &&
+        t.userId === meId &&
+        !t.invoiceId &&
+        !t.isPaid,
+    )
+    .filter((t) => wanted.size === 0 || wanted.has(t.id))
+    .filter(
+      (t) =>
+        !ranged || (Date.parse(t.fromAt) >= from && Date.parse(t.toAt) <= to),
+    )
+    .sort((a, b) => a.fromAt.localeCompare(b.fromAt))
+  if (wanted.size > 0 && entries.length !== wanted.size) {
+    fail(
+      400,
+      'Some of the selected entries are not yours, already paid, or already on an invoice',
+    )
+  }
+  if (entries.length === 0) {
+    if (ranged) {
+      fail(400, 'There is no unpaid tracked time in that period')
+    }
+    // Everything outstanding is billed already: the latest stands.
+    const latest = db.invoices
+      .filter((i) => i.projectId === project.id && i.userId === meId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    return latest ?? null
+  }
+  const now = new Date().toISOString()
+  const rateHourCents = Math.round(Number(project.rateHour) * 100)
+  const invoice = saveRow('invoices', {
+    id: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    projectId: project.id,
+    userId: meId,
+    fromAt: entries[0].fromAt,
+    toAt: entries.at(-1)!.toAt,
+    amountCents: Math.round((spanMinutes(entries) * rateHourCents) / 60),
+    rateHourCents,
+    state: 'Requested',
+    rejectionReason: null,
+    rejectedAt: null,
+    paidAt: null,
+    timeIds: entries.map((t) => t.id),
+  } satisfies MockInvoice)
+  for (const time of entries) {
+    saveRow('times', { ...time, invoiceId: invoice.id })
+  }
+  return invoice
 }
 
 const statistics = (
@@ -906,62 +984,13 @@ export const handlers: HttpHandler[] = [
     if (!project || !isWorker(db, project, meId)) {
       fail(403, 'Access denied')
     }
-    const wanted = new Set((body.timeIds as string[] | undefined) ?? [])
-    const from = body.fromUnix as number | undefined
-    const to = body.toUnix as number | undefined
-    const ranged = wanted.size === 0 && from !== undefined && to !== undefined
-    const entries = db.times
-      .filter(
-        (t) =>
-          t.projectId === project!.id &&
-          t.userId === meId &&
-          !t.invoiceId &&
-          !t.isPaid,
-      )
-      .filter((t) => wanted.size === 0 || wanted.has(t.id))
-      .filter(
-        (t) =>
-          !ranged || (Date.parse(t.fromAt) >= from && Date.parse(t.toAt) <= to),
-      )
-      .sort((a, b) => a.fromAt.localeCompare(b.fromAt))
-    if (wanted.size > 0 && entries.length !== wanted.size) {
-      fail(
-        400,
-        'Some of the selected entries are not yours, already paid, or already on an invoice',
-      )
-    }
-    if (entries.length === 0) {
-      if (ranged) {
-        fail(400, 'There is no unpaid tracked time in that period')
-      }
-      // Everything outstanding is billed already: the latest stands.
-      const latest = db.invoices
-        .filter((i) => i.projectId === project!.id && i.userId === meId)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
-      return latest ? shapeInvoice(db, latest, meId) : null
-    }
-    const now = new Date().toISOString()
-    const rateHourCents = Math.round(Number(project!.rateHour) * 100)
-    const invoice = saveRow('invoices', {
-      id: crypto.randomUUID(),
-      createdAt: now,
-      updatedAt: now,
-      projectId: project!.id,
-      userId: meId,
-      fromAt: entries[0].fromAt,
-      toAt: entries.at(-1)!.toAt,
-      amountCents: Math.round((spanMinutes(entries) * rateHourCents) / 60),
-      rateHourCents,
-      state: 'Requested',
-      rejectionReason: null,
-      rejectedAt: null,
-      paidAt: null,
-      timeIds: entries.map((t) => t.id),
-    } satisfies MockInvoice)
-    for (const time of entries) {
-      saveRow('times', { ...time, invoiceId: invoice.id })
-    }
-    return shapeInvoice(db, invoice, meId)
+    const invoice = issueInvoice(
+      db,
+      meId,
+      project!,
+      body as { timeIds?: string[]; fromUnix?: number; toUnix?: number },
+    )
+    return invoice ? shapeInvoice(db, invoice, meId) : null
   }),
   route('post', '/invoice/:id/reject', ({ db, meId, params, body }) =>
     shapeInvoice(
@@ -1086,6 +1115,35 @@ export const handlers: HttpHandler[] = [
   statistics('/statistics/team', ({ db, meId }, q) =>
     team(statisticsScope(db, meId, q)),
   ),
+
+  // Shared reports. The link is open to anyone: no session is asked for.
+  route('post', '/report', ({ db, meId, body }) => shareReport(db, meId, body)),
+  route('get', '/report', ({ db, meId }) => listReports(db, meId)),
+  route(
+    'get',
+    '/report/public/:token',
+    ({ db, params }) => openReport(db, params.token),
+    { auth: false },
+  ),
+  route('delete', '/report/:id', ({ db, meId, params }) => {
+    removeRows('reports', [ownReport(db, meId, params.id).id])
+    return new HttpResponse(null, { status: 204 })
+  }),
+  route('post', '/report/:id/invoice', ({ db, meId, params }) => {
+    const report = ownReport(db, meId, params.id)
+    const view = reportView(db, report)
+    if (view.invoiceId) {
+      return { id: view.invoiceId }
+    }
+    const project = projectOf(db, report.projectIds[0])
+    if (!view.canInvoice || !project) {
+      fail(400, 'Only a report of your own time on one project can be invoiced')
+    }
+    // The invoice is the period's, by the invoice's own rules.
+    const invoice = issueInvoice(db, meId, project!, reportPeriod(report))!
+    saveRow('reports', { ...report, invoiceId: invoice.id })
+    return { id: invoice.id }
+  }),
 
   // The Team page.
   route('get', '/team', ({ db, meId }) => teamOf(db, meId)),

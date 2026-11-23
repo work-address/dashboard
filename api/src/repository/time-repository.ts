@@ -687,8 +687,11 @@ export class TimeRepository extends AbstractRepositoryTemplate<Time> {
    * so one contributor's invoice must not pin a colleague's entries in the same
    * window. Legacy rows have no issuer and still protect the whole project - the
    * safe direction. Identifiers come from entity metadata, never request data.
+   *
+   * The one definition of Invoiced (GLOSSARY.md): a query that counts invoiced
+   * time reads it here, on entries it names by their table, `"time"`.
    */
-  private invoicedSql(): string {
+  public invoicedSql(): string {
     const time = this.getRepo().metadata.tableName
     const invoice =
       this.getRepo().manager.connection.getMetadata(Invoice).tableName

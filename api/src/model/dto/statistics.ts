@@ -27,4 +27,13 @@ export class StatisticsQueryDto {
   @IsOptional() @IsString() @MaxLength(200) app?: string
   /** How `time/daily` and `agents/daily` cut the period: by day, or by hour. */
   @IsOptional() @IsIn(['day', 'hour']) bucket?: 'day' | 'hour'
+  /**
+   * Only these agents' time and runs. Read by `agents/daily` alone; omitted or
+   * empty: every agent the caller may see.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  agentIds?: string[]
 }

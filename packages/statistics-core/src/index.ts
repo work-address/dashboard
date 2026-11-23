@@ -6,9 +6,12 @@ export {
   type ZonedParts,
 } from './zoned.js'
 export {
+  hiddenHistory,
   projectsForPeople,
   refusesQuery,
   refusesReport,
+  type HiddenHistory,
+  type HistoryLimit,
   type ReaderRole,
   type RoleOf,
 } from './statistics-scope.js'
@@ -19,8 +22,11 @@ export {
   StatisticsInsights,
   type AgentDailyRow,
   type AgentRunInput,
+  type AgentRunsDailyRow,
   type AgentSegment,
+  type AgentWorkedRow,
   type HourlyRow,
   type InsightEntry,
+  type PersonDailyRow,
   type StatisticsBucket,
 } from './statistics-insights.js'

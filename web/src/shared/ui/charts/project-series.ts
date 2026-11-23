@@ -1,6 +1,13 @@
-import type { ProjectWithStats } from '@/entities/projects'
+import { SERIES_COLORS, seriesColor } from './chart-palette'
 
-import { SERIES_COLORS, seriesColor, type BucketSeries } from '@/shared'
+import type { BucketSeries } from './bucket-bar-chart'
+
+/** What a project needs to be drawn as a series. */
+export type SeriesProject = {
+  id?: string
+  title: string
+  createdAt?: string
+}
 
 export const OTHER_SERIES_KEY = '__other'
 
@@ -15,7 +22,7 @@ const NAMED_SLOTS = SERIES_COLORS.length - 1
  * worked, rather than whichever were created first.
  */
 export function projectSeries(
-  projects: ProjectWithStats[],
+  projects: SeriesProject[],
   totals: Map<string, number>,
   otherLabel: string,
 ): { keyOf: (projectId: string) => string; series: BucketSeries[] } {

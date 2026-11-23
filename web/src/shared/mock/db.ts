@@ -183,6 +183,28 @@ export type MockCredential = {
   lastUsedAt: string | null
 }
 
+/**
+ * A shared report as the API stores it: the span and filters it was shared
+ * with and its link's secret, never the figures.
+ */
+export type MockReport = {
+  id: string
+  createdAt: string
+  /** The sharer. */
+  userId: string
+  token: string
+  title: string | null
+  /** The sharer's days in `timeZone`; `to` is exclusive. */
+  from: string
+  to: string
+  timeZone: string
+  projectIds: string[]
+  /** Empty: everyone the sharer sees on those projects. */
+  userIds: string[]
+  showAmounts: boolean
+  invoiceId: string | null
+}
+
 export type Db = {
   meId: string
   users: MockUser[]
@@ -193,6 +215,8 @@ export type Db = {
   /** Empty until the visitor sets one up: the seed's agents are its runs' products. */
   agents: MockAgent[]
   credentials: MockCredential[]
+  /** Empty until the visitor shares one. */
+  reports: MockReport[]
 }
 
 type WorldShape = {
@@ -478,6 +502,7 @@ export function buildDb(settings: DemoSettings, now: number): Db {
     runs,
     agents: [],
     credentials: [],
+    reports: [],
   }
 }
 

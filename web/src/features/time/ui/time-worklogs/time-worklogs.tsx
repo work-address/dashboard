@@ -1,7 +1,7 @@
 import { MixerHorizontalIcon } from '@radix-ui/react-icons'
 import { useStoreMap, useUnit } from 'effector-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
@@ -19,6 +19,7 @@ import {
   timeFiltersOpenChanged,
 } from '../../model'
 import { TimeMobileBulkActions } from '../common'
+import { TimeCharts } from '../time-charts'
 import { TimeContext } from '../time-context'
 import { TimeDialog } from '../time-dialog/time-dialog'
 import { TimeFilters, TimeScopeFilters } from '../time-filters/time-filters'
@@ -66,7 +67,12 @@ import {
  * The chrome lives here rather than in either view so that switching between
  * them keeps the filters applied and the selection intact.
  */
-export const TimeWorklogs = () => {
+type Props = {
+  /** The page's own action beside the scope filters, such as sharing a report. */
+  headerAction?: ReactNode
+}
+
+export const TimeWorklogs = ({ headerAction }: Props) => {
   const { t, i18n } = useTranslation()
 
   const isMobile = useBreakpoint('isMobile')
@@ -201,11 +207,15 @@ export const TimeWorklogs = () => {
             {/* Which project and which days: the page's scope, beside its
                 title as on the dashboard. A phone keeps every filter in its
                 drawer. */}
-            {isDesktop && <TimeScopeFilters />}
+            <Scope>
+              {isDesktop && <TimeScopeFilters />}
+              {headerAction}
+            </Scope>
           </HeaderTools>
         }
       />
       <TimeWeek />
+      <TimeCharts />
       <WorkspacePanel
         // One day picked: the list is that day's, and says so.
         title={
@@ -321,6 +331,20 @@ const countActivityFilters = (filters: TimeFilterValues) =>
 
 /* The status above the scope filters, both on the right; below xl they take
    the header's own row, the status first. */
+/* The filters and what acts on them, on one line where there is room. */
+const Scope = styled.div`
+  display: grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: var(--ui-space-3);
+  min-width: 0;
+
+  ${(p) => p.theme.breakpoints.down('xl')} {
+    grid-auto-flow: row;
+    justify-items: stretch;
+  }
+`
+
 const HeaderTools = styled.div`
   display: grid;
   justify-items: end;

@@ -13,6 +13,8 @@ describe('bucket breakdowns', () => {
       [
         {
           day: '2026-10-25T09',
+          userId: 'worker',
+          agentId: 'agent',
           product: 'codex',
           assistedSeconds: 600,
           autonomousSeconds: 0,
@@ -20,6 +22,8 @@ describe('bucket breakdowns', () => {
         },
         {
           day: '2026-10-25T09',
+          userId: 'worker',
+          agentId: 'agent',
           product: 'claude-code',
           assistedSeconds: 1200,
           autonomousSeconds: 600,

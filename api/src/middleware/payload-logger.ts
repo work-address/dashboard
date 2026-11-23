@@ -64,7 +64,7 @@ export class PayloadLogger implements ExpressMiddlewareInterface {
       const dataToLog = Object.fromEntries(
         Object.entries({
           method: request.method,
-          url: request.originalUrl,
+          url: RecordingPrivacy.loggedUrl(request.originalUrl),
           ip: request.ip,
           statusCode: response.statusCode,
           body: RecordingPrivacy.sensitive(request.originalUrl || request.path)

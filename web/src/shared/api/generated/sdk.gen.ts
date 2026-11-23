@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AdminControllerSearchData, AdminControllerSearchResponses, AdminControllerStatsData, AdminControllerStatsResponses, AgentControllerAttachData, AgentControllerAttachmentsData, AgentControllerAttachmentsResponses, AgentControllerAttachResponses, AgentControllerCreateData, AgentControllerCreateResponses, AgentControllerCredentialsData, AgentControllerCredentialsResponses, AgentControllerDetachData, AgentControllerDetachResponses, AgentControllerEditData, AgentControllerEditResponses, AgentControllerIngestData, AgentControllerIngestResponses, AgentControllerIssueData, AgentControllerIssueResponses, AgentControllerListData, AgentControllerListResponses, AgentControllerRemoveData, AgentControllerRemovePromptData, AgentControllerRemovePromptResponses, AgentControllerRemoveResponses, AgentControllerRevokeData, AgentControllerRevokeResponses, AgentControllerSearchData, AgentControllerSearchResponses, AgentControllerStatusData, AgentControllerStatusResponses, AuthControllerLoginEthData, AuthControllerLoginEthResponses, AuthControllerLoginGoogleData, AuthControllerLoginGoogleResponses, AuthControllerMethodsData, AuthControllerMethodsResponses, AuthControllerNonceData, AuthControllerNonceResponses, AuthControllerRefreshData, AuthControllerRefreshResponses, AuthControllerStatusData, AuthControllerStatusResponses, AuthTimeTrackerControllerTimeTrackerConnectData, AuthTimeTrackerControllerTimeTrackerConnectResponses, AuthTimeTrackerControllerTimeTrackerLoginData, AuthTimeTrackerControllerTimeTrackerLoginResponses, AuthTimeTrackerControllerTimeTrackerNonceGenerateData, AuthTimeTrackerControllerTimeTrackerNonceGenerateResponses, AuthTimeTrackerControllerTimeTrackerNonceGetData, AuthTimeTrackerControllerTimeTrackerNonceGetResponses, EntitlementControllerPushData, EntitlementControllerPushResponses, EntitlementControllerSeatsData, EntitlementControllerSeatsResponses, HelpControllerSwaggerData, HelpControllerSwaggerResponses, InvoiceControllerCreateData, InvoiceControllerCreateErrors, InvoiceControllerCreateResponses, InvoiceControllerMarkPaidData, InvoiceControllerMarkPaidErrors, InvoiceControllerMarkPaidResponses, InvoiceControllerMarkUnpaidData, InvoiceControllerMarkUnpaidErrors, InvoiceControllerMarkUnpaidResponses, InvoiceControllerReadData, InvoiceControllerReadErrors, InvoiceControllerReadResponses, InvoiceControllerRejectData, InvoiceControllerRejectErrors, InvoiceControllerRejectResponses, InvoiceControllerSearchData, InvoiceControllerSearchResponses, ProjectControllerCloseData, ProjectControllerCloseErrors, ProjectControllerCloseResponses, ProjectControllerCreateData, ProjectControllerCreateResponses, ProjectControllerDeleteData, ProjectControllerDeleteErrors, ProjectControllerDeleteResponses, ProjectControllerEditData, ProjectControllerEditErrors, ProjectControllerEditResponses, ProjectControllerGetStatsData, ProjectControllerGetStatsErrors, ProjectControllerGetStatsResponses, ProjectControllerReadData, ProjectControllerReadErrors, ProjectControllerReadResponses, ProjectControllerSearchData, ProjectControllerSearchResponses, StatisticsControllerAgentsDailyData, StatisticsControllerAgentsDailyResponses, StatisticsControllerAppsData, StatisticsControllerAppsResponses, StatisticsControllerInsightsMeData, StatisticsControllerInsightsMeResponses, StatisticsControllerOverviewData, StatisticsControllerOverviewResponses, StatisticsControllerTeamData, StatisticsControllerTeamResponses, StatisticsControllerTimeDailyData, StatisticsControllerTimeDailyResponses, StatisticsControllerTimeHourlyData, StatisticsControllerTimeHourlyResponses, TeamControllerReadData, TeamControllerReadResponses, TimeControllerCreateOrUpdateManyData, TimeControllerCreateOrUpdateManyResponses, TimeControllerDeleteData, TimeControllerDeleteResponses, TimeControllerEditData, TimeControllerEditErrors, TimeControllerEditResponses, TimeControllerGetTotalsData, TimeControllerGetTotalsErrors, TimeControllerGetTotalsResponses, TimeControllerMarkPaidData, TimeControllerMarkPaidResponses, TimeControllerMarkUnpaidData, TimeControllerMarkUnpaidResponses, TimeControllerPublishData, TimeControllerPublishResponses, TimeControllerReadData, TimeControllerReadErrors, TimeControllerReadResponses, TimeControllerRemoveLocationsData, TimeControllerRemoveLocationsResponses, TimeControllerRemoveProcessesData, TimeControllerRemoveProcessesResponses, TimeControllerRemoveScreenshotsData, TimeControllerRemoveScreenshotsResponses, TimeControllerSearchData, TimeControllerSearchResponses, UserControllerConnectedWalletNonceData, UserControllerConnectedWalletNonceResponses, UserControllerConnectWalletData, UserControllerConnectWalletResponses, UserControllerDisconnectWalletData, UserControllerDisconnectWalletResponses, UserControllerEditData, UserControllerEditResponses, UserControllerKeepWorkersData, UserControllerKeepWorkersResponses, UserControllerReadData, UserControllerReadErrors, UserControllerReadResponses, UserControllerSaveSettingsData, UserControllerSaveSettingsResponses, UserControllerSettingsData, UserControllerSettingsResponses, UserControllerTrackingWorkersData, UserControllerTrackingWorkersResponses } from './types.gen';
+import type { AdminControllerSearchData, AdminControllerSearchResponses, AdminControllerStatsData, AdminControllerStatsResponses, AgentControllerAttachData, AgentControllerAttachmentsData, AgentControllerAttachmentsResponses, AgentControllerAttachResponses, AgentControllerCreateData, AgentControllerCreateResponses, AgentControllerCredentialsData, AgentControllerCredentialsResponses, AgentControllerDetachData, AgentControllerDetachResponses, AgentControllerEditData, AgentControllerEditResponses, AgentControllerIngestData, AgentControllerIngestResponses, AgentControllerIssueData, AgentControllerIssueResponses, AgentControllerListData, AgentControllerListResponses, AgentControllerRemoveData, AgentControllerRemovePromptData, AgentControllerRemovePromptResponses, AgentControllerRemoveResponses, AgentControllerRevokeData, AgentControllerRevokeResponses, AgentControllerSearchData, AgentControllerSearchResponses, AgentControllerStatusData, AgentControllerStatusResponses, AuthControllerLoginEthData, AuthControllerLoginEthResponses, AuthControllerLoginGoogleData, AuthControllerLoginGoogleResponses, AuthControllerMethodsData, AuthControllerMethodsResponses, AuthControllerNonceData, AuthControllerNonceResponses, AuthControllerRefreshData, AuthControllerRefreshResponses, AuthControllerStatusData, AuthControllerStatusResponses, AuthTimeTrackerControllerTimeTrackerConnectData, AuthTimeTrackerControllerTimeTrackerConnectResponses, AuthTimeTrackerControllerTimeTrackerLoginData, AuthTimeTrackerControllerTimeTrackerLoginResponses, AuthTimeTrackerControllerTimeTrackerNonceGenerateData, AuthTimeTrackerControllerTimeTrackerNonceGenerateResponses, AuthTimeTrackerControllerTimeTrackerNonceGetData, AuthTimeTrackerControllerTimeTrackerNonceGetResponses, EntitlementControllerPushData, EntitlementControllerPushResponses, EntitlementControllerSeatsData, EntitlementControllerSeatsResponses, HelpControllerSwaggerData, HelpControllerSwaggerResponses, InvoiceControllerCreateData, InvoiceControllerCreateErrors, InvoiceControllerCreateResponses, InvoiceControllerMarkPaidData, InvoiceControllerMarkPaidErrors, InvoiceControllerMarkPaidResponses, InvoiceControllerMarkUnpaidData, InvoiceControllerMarkUnpaidErrors, InvoiceControllerMarkUnpaidResponses, InvoiceControllerReadData, InvoiceControllerReadErrors, InvoiceControllerReadResponses, InvoiceControllerRejectData, InvoiceControllerRejectErrors, InvoiceControllerRejectResponses, InvoiceControllerSearchData, InvoiceControllerSearchResponses, ProjectControllerCloseData, ProjectControllerCloseErrors, ProjectControllerCloseResponses, ProjectControllerCreateData, ProjectControllerCreateResponses, ProjectControllerDeleteData, ProjectControllerDeleteErrors, ProjectControllerDeleteResponses, ProjectControllerEditData, ProjectControllerEditErrors, ProjectControllerEditResponses, ProjectControllerGetStatsData, ProjectControllerGetStatsErrors, ProjectControllerGetStatsResponses, ProjectControllerReadData, ProjectControllerReadErrors, ProjectControllerReadResponses, ProjectControllerSearchData, ProjectControllerSearchResponses, ReportControllerCreateData, ReportControllerCreateResponses, ReportControllerInvoiceData, ReportControllerInvoiceResponses, ReportControllerListData, ReportControllerListResponses, ReportControllerOpenData, ReportControllerOpenResponses, ReportControllerRemoveData, ReportControllerRemoveResponses, StatisticsControllerAgentsDailyData, StatisticsControllerAgentsDailyResponses, StatisticsControllerAppsData, StatisticsControllerAppsResponses, StatisticsControllerInsightsMeData, StatisticsControllerInsightsMeResponses, StatisticsControllerOverviewData, StatisticsControllerOverviewResponses, StatisticsControllerTeamData, StatisticsControllerTeamResponses, StatisticsControllerTimeDailyData, StatisticsControllerTimeDailyResponses, StatisticsControllerTimeHourlyData, StatisticsControllerTimeHourlyResponses, TeamControllerReadData, TeamControllerReadResponses, TimeControllerCreateOrUpdateManyData, TimeControllerCreateOrUpdateManyResponses, TimeControllerDeleteData, TimeControllerDeleteResponses, TimeControllerEditData, TimeControllerEditErrors, TimeControllerEditResponses, TimeControllerGetTotalsData, TimeControllerGetTotalsErrors, TimeControllerGetTotalsResponses, TimeControllerMarkPaidData, TimeControllerMarkPaidResponses, TimeControllerMarkUnpaidData, TimeControllerMarkUnpaidResponses, TimeControllerPublishData, TimeControllerPublishResponses, TimeControllerReadData, TimeControllerReadErrors, TimeControllerReadResponses, TimeControllerRemoveLocationsData, TimeControllerRemoveLocationsResponses, TimeControllerRemoveProcessesData, TimeControllerRemoveProcessesResponses, TimeControllerRemoveScreenshotsData, TimeControllerRemoveScreenshotsResponses, TimeControllerSearchData, TimeControllerSearchResponses, UserControllerConnectedWalletNonceData, UserControllerConnectedWalletNonceResponses, UserControllerConnectWalletData, UserControllerConnectWalletResponses, UserControllerDisconnectWalletData, UserControllerDisconnectWalletResponses, UserControllerEditData, UserControllerEditResponses, UserControllerKeepWorkersData, UserControllerKeepWorkersResponses, UserControllerReadData, UserControllerReadErrors, UserControllerReadResponses, UserControllerSaveSettingsData, UserControllerSaveSettingsResponses, UserControllerSettingsData, UserControllerSettingsResponses, UserControllerTrackingWorkersData, UserControllerTrackingWorkersResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -253,7 +253,7 @@ export const statisticsControllerInsightsMe = <ThrowOnError extends boolean = fa
 });
 
 /**
- * Agent time per day and product, assisted and autonomous, and run counts
+ * Agent time per day, worker and agent, assisted and autonomous, and run counts over the period and by the day each started
  */
 export const statisticsControllerAgentsDaily = <ThrowOnError extends boolean = false>(options: Options<StatisticsControllerAgentsDailyData, ThrowOnError>) => (options.client ?? client).post<StatisticsControllerAgentsDailyResponses, unknown, ThrowOnError>({
     responseType: 'json',
@@ -292,6 +292,59 @@ export const statisticsControllerApps = <ThrowOnError extends boolean = false>(o
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * The caller's own shared reports, newest first
+ */
+export const reportControllerList = <ThrowOnError extends boolean = false>(options?: Options<ReportControllerListData, ThrowOnError>) => (options?.client ?? client).get<ReportControllerListResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/report',
+    ...options
+});
+
+/**
+ * Share a span of what the caller sees in statistics, at a link anyone can open
+ */
+export const reportControllerCreate = <ThrowOnError extends boolean = false>(options: Options<ReportControllerCreateData, ThrowOnError>) => (options.client ?? client).post<ReportControllerCreateResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/report',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * A shared report by its link's secret, read now in the sharer's scope: time by day, project, person and agent, and amounts only if the sharer switched them on. 404 for a link that is unknown or deleted, 410 while a plan hides part of its span
+ */
+export const reportControllerOpen = <ThrowOnError extends boolean = false>(options: Options<ReportControllerOpenData, ThrowOnError>) => (options.client ?? client).get<ReportControllerOpenResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    url: '/api/report/public/{token}',
+    ...options
+});
+
+/**
+ * Delete one of the caller's shared reports, which ends its link
+ */
+export const reportControllerRemove = <ThrowOnError extends boolean = false>(options: Options<ReportControllerRemoveData, ThrowOnError>) => (options.client ?? client).delete<ReportControllerRemoveResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/report/{id}',
+    ...options
+});
+
+/**
+ * Invoice the period of a report of the caller's own time on one project; answers the invoice's id, the same one however often it is asked
+ */
+export const reportControllerInvoice = <ThrowOnError extends boolean = false>(options: Options<ReportControllerInvoiceData, ThrowOnError>) => (options.client ?? client).post<ReportControllerInvoiceResponses, unknown, ThrowOnError>({
+    responseType: 'json',
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/report/{id}/invoice',
+    ...options
 });
 
 /**

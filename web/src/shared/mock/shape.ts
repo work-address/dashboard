@@ -25,7 +25,7 @@ export const userOf = (db: Db, id: string) =>
 export const projectOf = (db: Db, id: string) =>
   db.projects.find((project) => project.id === id && !project.deletedAt)
 
-const ownerPremium = (db: Db, project: MockProject) =>
+export const ownerPremium = (db: Db, project: MockProject) =>
   userOf(db, project.ownerId)?.premium ?? false
 
 export const isOwner = (project: MockProject, userId: string) =>
@@ -84,6 +84,20 @@ export const isPublished = (
       time.invoiceId ||
       Date.parse(time.toAt) + project.reviewWindowHours * HOUR_MS <= now,
   )
+
+/**
+ * Invoiced (GLOSSARY.md), as the demo keeps it: an entry is on an invoice
+ * until that invoice is rejected, which takes its `invoiceId` away.
+ */
+export const isInvoiced = (time: Pick<MockTime, 'invoiceId'>) =>
+  Boolean(time.invoiceId)
+
+/**
+ * The demo's agent is the product a person's runs used (team.ts): this is the
+ * id a run's agent goes by on every route, and what a reader filters with.
+ */
+export const agentIdOf = (run: Pick<MockRun, 'userId' | 'product'>) =>
+  `${run.userId}:${run.product}`
 
 /** The author always; the owner once published; nobody else. */
 export const hasDetail = (
@@ -154,7 +168,7 @@ export const shapeTime = (
   const { projectId: _p, userId: _u, invoiceId: _i, screenshot, ...rest } = time
   const base = {
     ...rest,
-    isInvoiced: Boolean(time.invoiceId),
+    isInvoiced: isInvoiced(time),
     project: shapeProjectCore(db, project),
     user: author ? shapeUser(author) : undefined,
     screenshot: screenshot === null ? undefined : demoScreenshots()[screenshot],
@@ -293,7 +307,7 @@ export const shapeRun = (
   // The demo's agent is the product a person's runs used (team.ts), and a
   // quarter of its runs came from a server: the run key says which, so the
   // seed's other data stays as it was.
-  const agentId = `${run.userId}:${run.product}`
+  const agentId = agentIdOf(run)
   const mode = run.mode ?? (parseInt(run.runKey[0], 16) < 4 ? 'fixed' : 'timer')
   return {
     deletedAt: null,

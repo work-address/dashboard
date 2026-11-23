@@ -3,7 +3,6 @@ import { combine, createEvent, createStore, merge, sample } from 'effector'
 import i18n from 'i18next'
 
 import { latestDesktopSession } from './desktop-session'
-import { bucketSizeFor } from './period-buckets'
 
 import { $user } from '@/entities/profile'
 import { $projects, type ProjectWithStats } from '@/entities/projects'
@@ -26,6 +25,7 @@ import {
   type RecentTimeParams,
 } from '@/entities/time'
 import {
+  bucketSizeFor,
   DEFAULT_DATE_RANGE_PRESET,
   fromDay,
   hasFix,

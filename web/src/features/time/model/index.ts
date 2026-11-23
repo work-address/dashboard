@@ -96,6 +96,22 @@ export {
   type TimeWeekSummary,
 } from './time-week'
 export {
+  getTimeBilling,
+  getTimeChartsRange,
+  getTimePeopleAgents,
+  getTimeProjectShares,
+  type TimeBilling,
+  type TimeChartsMode,
+  type TimeChartsRange,
+  type TimeProjectShare,
+} from './time-charts'
+export {
+  $timeChartsMode,
+  $timeChartsRange,
+  timeChartsModeChanged,
+  timeChartsRequested,
+} from './time-charts.model'
+export {
   $timeWeek,
   $timeWeekDays,
   $timeWeekFailed,

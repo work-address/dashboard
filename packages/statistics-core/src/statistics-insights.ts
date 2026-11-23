@@ -67,13 +67,47 @@ export interface AgentRunInput {
 /** How finely time is cut: by the reader's day, or by their hour. */
 export type StatisticsBucket = 'day' | 'hour'
 
+/** One agent's time in one of the reader's days, or hours. */
 export interface AgentDailyRow {
   /** `YYYY-MM-DD`, or `YYYY-MM-DDTHH` when cut by hour. */
   day: string
+  /** The worker who runs the agent. */
+  userId: string
+  agentId: string
   product: string
   assistedSeconds: number
   autonomousSeconds: number
   waitSeconds: number
+}
+
+/** How many runs started on one of the reader's days and ended one way. */
+export interface AgentRunsDailyRow {
+  /** `YYYY-MM-DD`, whatever the bucket. */
+  day: string
+  status: string
+  count: number
+}
+
+/** Tracked time on one project on one of the reader's days. */
+export interface PersonDailyRow {
+  /** `YYYY-MM-DD` */
+  day: string
+  projectId: string
+  /** Whose time it is; absent where the reader may not see that split. */
+  userId?: string
+  trackedSeconds: number
+}
+
+/** One agent's working time on one project on one of the reader's days. */
+export interface AgentWorkedRow {
+  /** `YYYY-MM-DD` */
+  day: string
+  projectId: string
+  /** The worker who runs the agent. */
+  userId: string
+  agentId: string
+  /** Assisted and autonomous together; waiting on a person is not work. */
+  workedSeconds: number
 }
 
 /**
@@ -226,11 +260,12 @@ export class StatisticsInsights {
   }
 
   /**
-   * Agent time per day and product. Worked time is assisted where the same
-   * worker's own timer ran on the same project, autonomous otherwise.
-   * `human_wait` is reported apart and never counts as agent time. Each
-   * agent's runs are merged first, so overlapping runs of one agent count
-   * once - the same rule its invoice lines follow.
+   * Agent time per day, worker and agent: one row for each, so a reader sums
+   * the rows of a day to get its product or its total. Worked time is
+   * assisted where the same worker's own timer ran on the same project,
+   * autonomous otherwise. `human_wait` is reported apart and never counts as
+   * agent time. Each agent's runs are merged first, so overlapping runs of
+   * one agent count once - the same rule its invoice lines follow.
    */
   public static agentDaily(
     runs: AgentRunInput[],
@@ -252,16 +287,20 @@ export class StatisticsInsights {
     const rows = new Map<string, AgentDailyRow>()
     const add = (
       spans: Span[],
-      product: string,
+      agent: Pick<AgentRunInput, 'userId' | 'agentId' | 'product'>,
       field: 'assistedSeconds' | 'autonomousSeconds' | 'waitSeconds',
     ) => {
+      const { userId, agentId, product } = agent
       for (const span of spans)
         for (const [day, ms] of bucket === 'hour'
           ? this.splitByHour(span, timeZone)
           : this.splitByDay(span, timeZone)) {
-          const key = `${day}:${product}`
+          // An agent's time on several projects is one row a day.
+          const key = JSON.stringify([day, userId, agentId, product])
           const row = rows.get(key) ?? {
             day,
+            userId,
+            agentId,
             product,
             assistedSeconds: 0,
             autonomousSeconds: 0,
@@ -272,7 +311,7 @@ export class StatisticsInsights {
         }
     }
     for (const group of groups.values()) {
-      const { userId, projectId, product } = group[0]
+      const { userId, projectId } = group[0]
       const state = (name: AgentSegment['state']) =>
         TimeSpans.intersect(
           TimeSpans.union(
@@ -290,11 +329,11 @@ export class StatisticsInsights {
       )
       const own = TimeSpans.union(humanBy.get(`${userId}:${projectId}`) ?? [])
       const assisted = TimeSpans.intersect(worked, own)
-      add(assisted, product, 'assistedSeconds')
-      add(TimeSpans.subtract(worked, assisted), product, 'autonomousSeconds')
+      add(assisted, group[0], 'assistedSeconds')
+      add(TimeSpans.subtract(worked, assisted), group[0], 'autonomousSeconds')
       add(
         TimeSpans.subtract(state('human_wait'), worked),
-        product,
+        group[0],
         'waitSeconds',
       )
     }
@@ -307,8 +346,157 @@ export class StatisticsInsights {
       }))
       .sort(
         (a, b) =>
-          a.day.localeCompare(b.day) || a.product.localeCompare(b.product),
+          a.day.localeCompare(b.day) ||
+          a.product.localeCompare(b.product) ||
+          a.userId.localeCompare(b.userId) ||
+          a.agentId.localeCompare(b.agentId),
       )
+  }
+
+  /**
+   * Runs per day and status. A run counts once, whole, on the reader's day it
+   * started - the rule entries follow - so the counts add up to the runs
+   * given, and a run that began before the period is counted on that earlier
+   * day. Always by day: a run has one start, whatever the time is cut by.
+   */
+  public static runsDaily(
+    runs: { fromAt: Date | string; status: string }[],
+    timeZone: string,
+  ): AgentRunsDailyRow[] {
+    const rows = new Map<string, AgentRunsDailyRow>()
+    for (const run of runs) {
+      const { day } = zonedParts(new Date(run.fromAt), timeZone)
+      const key = JSON.stringify([day, run.status])
+      const row = rows.get(key) ?? { day, status: run.status, count: 0 }
+      row.count++
+      rows.set(key, row)
+    }
+    return [...rows.values()].sort(
+      (a, b) => a.day.localeCompare(b.day) || a.status.localeCompare(b.status),
+    )
+  }
+
+  /**
+   * Tracked time per day, project and person, as a reader may see it: the
+   * time given is what they may count, and on a project they only view the
+   * people are folded into the project's total (SPEC.md, "Who can see what").
+   */
+  public static dailyByPerson(
+    rows: {
+      day: string
+      projectId: string
+      userId: string
+      trackedSeconds: number
+    }[],
+    viewed: Iterable<string>,
+  ): PersonDailyRow[] {
+    const totalsOnly = new Set(viewed)
+    const out = new Map<string, PersonDailyRow>()
+    for (const { day, projectId, userId, trackedSeconds } of rows) {
+      const person = totalsOnly.has(projectId) ? undefined : userId
+      const key = JSON.stringify([day, projectId, person ?? null])
+      const row = out.get(key) ?? {
+        day,
+        projectId,
+        ...(person === undefined ? {} : { userId: person }),
+        trackedSeconds: 0,
+      }
+      row.trackedSeconds += trackedSeconds
+      out.set(key, row)
+    }
+    return [...out.values()]
+      .map((row) => ({
+        ...row,
+        trackedSeconds: Math.round(row.trackedSeconds),
+      }))
+      .sort(
+        (a, b) =>
+          a.day.localeCompare(b.day) ||
+          a.projectId.localeCompare(b.projectId) ||
+          (a.userId ?? '').localeCompare(b.userId ?? ''),
+      )
+  }
+
+  /**
+   * Each agent's working time per day and project: what `agentDaily` calls
+   * assisted and autonomous, together, cut to the range and at the reader's
+   * midnights the same way, with an agent's overlapping runs on a project
+   * counted once.
+   */
+  public static agentWorkedDaily(
+    runs: AgentRunInput[],
+    range: Span,
+    timeZone: string,
+  ): AgentWorkedRow[] {
+    const byProject = new Map<string, AgentRunInput[]>()
+    for (const run of runs)
+      byProject.set(run.projectId, [
+        ...(byProject.get(run.projectId) ?? []),
+        run,
+      ])
+    const out = new Map<string, AgentWorkedRow>()
+    for (const [projectId, projectRuns] of byProject)
+      for (const row of this.agentDaily(projectRuns, [], range, timeZone)) {
+        const key = JSON.stringify([
+          row.day,
+          projectId,
+          row.userId,
+          row.agentId,
+        ])
+        const worked = out.get(key) ?? {
+          day: row.day,
+          projectId,
+          userId: row.userId,
+          agentId: row.agentId,
+          workedSeconds: 0,
+        }
+        worked.workedSeconds += row.assistedSeconds + row.autonomousSeconds
+        out.set(key, worked)
+      }
+    return [...out.values()]
+      .filter((row) => row.workedSeconds > 0)
+      .sort(
+        (a, b) =>
+          a.day.localeCompare(b.day) ||
+          a.projectId.localeCompare(b.projectId) ||
+          a.userId.localeCompare(b.userId) ||
+          a.agentId.localeCompare(b.agentId),
+      )
+  }
+
+  /**
+   * What agents' working time is worth at the rates given, in cents an hour:
+   * each agent's time on a project priced and rounded once, like an invoice's
+   * own agent line.
+   */
+  public static agentCents(
+    rows: AgentWorkedRow[],
+    rateHourCents: (
+      agent: Pick<AgentWorkedRow, 'projectId' | 'userId' | 'agentId'>,
+    ) => number,
+  ): number {
+    const worked = new Map<
+      string,
+      Pick<AgentWorkedRow, 'projectId' | 'userId' | 'agentId'> & {
+        seconds: number
+      }
+    >()
+    for (const { projectId, userId, agentId, workedSeconds } of rows) {
+      const key = JSON.stringify([projectId, userId, agentId])
+      const agent = worked.get(key) ?? {
+        projectId,
+        userId,
+        agentId,
+        seconds: 0,
+      }
+      agent.seconds += workedSeconds
+      worked.set(key, agent)
+    }
+    return [...worked.values()].reduce(
+      (cents, agent) =>
+        cents + Math.round((agent.seconds * rateHourCents(agent)) / 3600),
+      0,
+    )
   }
 
   /** A span cut at the reader's hours, as [`YYYY-MM-DDTHH`, milliseconds] pairs. */

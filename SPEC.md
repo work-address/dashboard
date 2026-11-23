@@ -179,6 +179,22 @@ may serve long ranges and large accounts; they are derived, rebuilt from the
 rows, and never used where a figure must match an invoice. The plans are in
 `docs/app-statistics.md` and `docs/productivity.md`.
 
+**A shared report is `Statistics` at a link.** A reader can share a fixed span
+of what they see: tracked time by day and project and, where they may see it,
+by person and by agent. Anyone with the link opens it, signed in or not. The
+report stores its span, the projects and people it was shared with and its
+secret, and never the figures. Each opening reads them in the sharer's scope
+as it is then, so an entry edited later shows as edited, and a project the
+sharer can no longer see drops out. It shows time, and amounts at current
+rates only when the sharer switched them on and may see money. It never shows
+detail: no screenshots, prompts, app names, window titles or locations. The
+sharer deletes the report to end the link.
+
+A report of the sharer's own time on one project can be billed. `Invoice`
+creates the invoice from the same period by its own rules, and the report
+only remembers which invoice that was, so invoices still never read
+`Statistics`.
+
 ## A worker's agents are the worker's
 
 A worker keeps a list of agents — one or more per product they run, such as
@@ -361,7 +377,9 @@ would otherwise read every contributor's rate, and a viewer is typically
 further from those contributors than a fellow worker is.
 
 There is no mechanism for granting an outsider access to a single invoice. An
-invoice leaves the product as a PDF, sent by the issuer.
+invoice leaves the product as a PDF, sent by the issuer. An outsider reads
+time through a shared report instead: totals and charts for a span the sharer
+chose, in the sharer's scope, and nothing an invoice holds.
 
 ## What premium governs
 
@@ -385,3 +403,10 @@ Retention is a property of the workspace, never of one person: `Statistics`
 and invoice reports aggregate across contributors, so a project whose
 contributors had different retention would report totals that quietly disagree
 with the work done.
+
+**A shared report follows the same rule.** Once any day of its span is older
+than what the plan of a project's owner keeps, the link answers that the
+report is no longer available, and upgrading brings it back. It is checked
+each time the link is opened, since hidden time is only removed the next time
+the project is written to. A report is not exempt the way invoiced hours are:
+sharing one every week would otherwise keep all history without paying.

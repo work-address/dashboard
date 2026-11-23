@@ -1,4 +1,5 @@
 import {
+  BarChartIcon,
   ClockIcon,
   DashboardIcon,
   FileTextIcon,
@@ -23,6 +24,8 @@ type MainRoutes = Route<'/', 'dashboard'> &
   Route<'/download', 'download'> &
   Route<'/invoice/:id', 'invoice', NoChildRoutes, IdRouteParams> &
   Route<'/invoice', 'invoices'> &
+  Route<'/report/:token', 'report', NoChildRoutes, { token: string }> &
+  Route<'/report', 'reports'> &
   Route<'/settings', 'settings'> &
   Route<
     'https://facebook.com/:userId',
@@ -135,6 +138,21 @@ export const routes: MainRoutes = {
     },
   },
 
+  // What the reader has shared. It sits before the invoices: a report is
+  // what most people send, and an invoice is made from one.
+  reports: {
+    schema: '/report',
+    build: () => '/report',
+
+    desktopOrder: 1.9,
+    mobileOrder: 1.9,
+
+    showInMenu: true,
+    translateKeyDesktop: 'header.nav.reports',
+    translateKeyMobile: 'header.nav.reports',
+    icon: BarChartIcon,
+  },
+
   // Singular, matching `/invoice/:id` and the API it reads from: `/invoice`
   // is every invoice, `/invoice/:id` is one of them. `/invoices` still
   // resolves here - see the redirect in app.tsx.
@@ -230,6 +248,12 @@ export const routes: MainRoutes = {
     schema: '/invoice/:id',
     build: ({ id }) => `/invoice/${id}`,
   },
+
+  // One shared report, by the secret in its link: open to anyone.
+  report: {
+    schema: '/report/:token',
+    build: ({ token }) => `/report/${encodeURIComponent(token)}`,
+  },
 }
 
 /** Routes hidden from the menu for unauthenticated visitors. */
@@ -240,6 +264,7 @@ export const AUTH_REQUIRED_ROUTES = new Set<string>([
   routes.agents.schema,
   routes.profile.schema,
   routes.invoices.schema,
+  routes.reports.schema,
   routes.settings.schema,
 ])
 

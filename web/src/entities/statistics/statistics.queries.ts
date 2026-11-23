@@ -3,8 +3,10 @@ import { concurrency, createQuery } from '@farfetched/core'
 import type {
   StatisticsAgents,
   StatisticsDailyRow,
+  StatisticsHidden,
   StatisticsHourlyRow,
   StatisticsInsights,
+  StatisticsOverview,
   StatisticsProjectAppRow,
   StatisticsQuery,
   StatisticsTeamRow,
@@ -21,26 +23,46 @@ const toNumber = (value: unknown) =>
 const run = async <T>(request: () => Promise<unknown>): Promise<T> =>
   (await runApiData(request as never, 'in-place')) as T
 
+type HiddenFields = { hiddenBefore?: string; canUpgrade?: boolean }
+
+// The API leaves both fields out when nothing in the period is hidden.
+const toHidden = ({
+  hiddenBefore,
+  canUpgrade,
+}: HiddenFields): StatisticsHidden | null =>
+  hiddenBefore
+    ? { before: hiddenBefore, canUpgrade: canUpgrade === true }
+    : null
+
+const fullOverviewHandler = async (
+  query: StatisticsQuery,
+): Promise<StatisticsOverview> => {
+  const { totals, ...rest } = await run<
+    { totals: Record<string, unknown>[] } & HiddenFields
+  >(() => baseApi.statisticsControllerOverview({ body: query }))
+
+  return {
+    totals: totals.map((row) => ({
+      projectId: String(row.projectId),
+      trackedSeconds: toNumber(row.trackedSeconds) ?? 0,
+      activeSeconds: toNumber(row.activeSeconds),
+      idleSeconds: toNumber(row.idleSeconds),
+      manualSeconds: toNumber(row.manualSeconds),
+      paidSeconds: toNumber(row.paidSeconds),
+      unpaidSeconds: toNumber(row.unpaidSeconds),
+      invoicedSeconds: toNumber(row.invoicedSeconds),
+      invoicedUnpaidSeconds: toNumber(row.invoicedUnpaidSeconds),
+      earnedCents: toNumber(row.earnedCents),
+      paidCents: toNumber(row.paidCents),
+      unpaidCents: toNumber(row.unpaidCents),
+    })),
+    hidden: toHidden(rest),
+  }
+}
+
 const overviewHandler = async (
   query: StatisticsQuery,
-): Promise<StatisticsTotalsRow[]> => {
-  const { totals } = await run<{ totals: Record<string, unknown>[] }>(() =>
-    baseApi.statisticsControllerOverview({ body: query }),
-  )
-
-  return totals.map((row) => ({
-    projectId: String(row.projectId),
-    trackedSeconds: toNumber(row.trackedSeconds) ?? 0,
-    activeSeconds: toNumber(row.activeSeconds),
-    idleSeconds: toNumber(row.idleSeconds),
-    manualSeconds: toNumber(row.manualSeconds),
-    paidSeconds: toNumber(row.paidSeconds),
-    unpaidSeconds: toNumber(row.unpaidSeconds),
-    earnedCents: toNumber(row.earnedCents),
-    paidCents: toNumber(row.paidCents),
-    unpaidCents: toNumber(row.unpaidCents),
-  }))
-}
+): Promise<StatisticsTotalsRow[]> => (await fullOverviewHandler(query)).totals
 
 export const statisticsOverviewQuery = createQuery({ handler: overviewHandler })
 
@@ -123,14 +145,47 @@ export const statisticsInsightsQuery = createQuery({
 
 concurrency(statisticsInsightsQuery, { strategy: 'TAKE_LATEST' })
 
-export const statisticsAgentsQuery = createQuery({
-  handler: async (query: StatisticsQuery): Promise<StatisticsAgents> =>
-    run<StatisticsAgents>(() =>
-      baseApi.statisticsControllerAgentsDaily({ body: query }),
-    ),
-})
+const agentsHandler = async (
+  query: StatisticsQuery,
+): Promise<StatisticsAgents> => {
+  const { daily, runs, runsDaily, ...rest } = await run<
+    Pick<StatisticsAgents, 'daily' | 'runs'> &
+      Partial<Pick<StatisticsAgents, 'runsDaily'>> &
+      HiddenFields
+  >(() => baseApi.statisticsControllerAgentsDaily({ body: query }))
+
+  return { daily, runs, runsDaily: runsDaily ?? [], hidden: toHidden(rest) }
+}
+
+export const statisticsAgentsQuery = createQuery({ handler: agentsHandler })
 
 concurrency(statisticsAgentsQuery, { strategy: 'TAKE_LATEST' })
+
+/**
+ * The period a page's own charts draw - the Time page's date filter, the
+ * Agents page's - kept apart from the dashboard's and the week strip's for
+ * the same reason the week's are.
+ */
+export const statisticsPeriodOverviewQuery = createQuery({
+  handler: fullOverviewHandler,
+})
+
+concurrency(statisticsPeriodOverviewQuery, { strategy: 'TAKE_LATEST' })
+
+export const statisticsPeriodDailyQuery = createQuery({ handler: dailyHandler })
+
+concurrency(statisticsPeriodDailyQuery, { strategy: 'TAKE_LATEST' })
+
+export const statisticsPeriodAgentsQuery = createQuery({
+  handler: agentsHandler,
+})
+
+concurrency(statisticsPeriodAgentsQuery, { strategy: 'TAKE_LATEST' })
+
+/** The Agents page's charts, which follow that page's own filters. */
+export const statisticsAgentRunsQuery = createQuery({ handler: agentsHandler })
+
+concurrency(statisticsAgentRunsQuery, { strategy: 'TAKE_LATEST' })
 
 export const statisticsTeamQuery = createQuery({
   handler: async (query: StatisticsQuery): Promise<StatisticsTeamRow[]> => {

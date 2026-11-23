@@ -8,12 +8,6 @@ import {
   $dashboardRange,
   dashboardStatisticsRequested,
 } from '../../model/dashboard-filters'
-import {
-  bucketKeyOf,
-  bucketLabels,
-  periodBuckets,
-  visibleBuckets,
-} from '../../model/period-buckets'
 import { DashboardWidget } from '../dashboard-widget'
 
 import { $projects } from '@/entities/projects'
@@ -22,6 +16,10 @@ import {
   statisticsDailyQuery,
 } from '@/entities/statistics'
 import {
+  bucketKeyOf,
+  bucketLabels,
+  periodBuckets,
+  visibleBuckets,
   BucketBarChart,
   formatCompactDurationFromMinutes,
   formatDurationFromMinutes,

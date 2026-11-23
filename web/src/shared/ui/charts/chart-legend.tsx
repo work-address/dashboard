@@ -6,8 +6,10 @@ export type ChartLegendItem = { label: string; color: string }
 export const ChartLegend = ({ items }: { items: ChartLegendItem[] }) =>
   items.length < 2 ? null : (
     <Root>
-      {items.map((item) => (
-        <Item key={item.label}>
+      {items.map((item, index) => (
+        // By position: two series may share a name, and the order is fixed.
+
+        <Item key={index}>
           <Swatch style={{ background: item.color }} />
           <Name title={item.label}>{item.label}</Name>
         </Item>

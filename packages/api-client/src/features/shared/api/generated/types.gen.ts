@@ -234,6 +234,12 @@ export type AgentSearchDto = {
     fromAt?: string | string;
     toAt?: string | string;
     offset?: number;
+    userId?: string;
+    agentId?: string;
+    mode?: 'timer' | 'fixed';
+    status?: string;
+    sessionId?: string;
+    runKey?: string;
 };
 
 export type StatisticsQueryDto = {
@@ -245,6 +251,17 @@ export type StatisticsQueryDto = {
     invoiceId?: string;
     app?: string;
     bucket?: 'day' | 'hour';
+    agentIds?: Array<string>;
+};
+
+export type SharedReportCreateDto = {
+    title?: string;
+    from: string;
+    to: string;
+    timeZone: string;
+    projectIds: Array<string>;
+    userIds?: Array<string>;
+    showAmounts?: boolean;
 };
 
 export type AuthForgotPasswordDto = {
@@ -1239,6 +1256,82 @@ export type StatisticsControllerAppsData = {
 };
 
 export type StatisticsControllerAppsResponses = {
+    /**
+     * Successful response
+     */
+    200: unknown;
+};
+
+export type ReportControllerListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/report';
+};
+
+export type ReportControllerListResponses = {
+    /**
+     * Successful response
+     */
+    200: unknown;
+};
+
+export type ReportControllerCreateData = {
+    body: SharedReportCreateDto;
+    path?: never;
+    query?: never;
+    url: '/api/report';
+};
+
+export type ReportControllerCreateResponses = {
+    /**
+     * Successful response
+     */
+    200: unknown;
+};
+
+export type ReportControllerOpenData = {
+    body?: never;
+    path: {
+        token: string;
+    };
+    query?: never;
+    url: '/api/report/public/{token}';
+};
+
+export type ReportControllerOpenResponses = {
+    /**
+     * Successful response
+     */
+    200: unknown;
+};
+
+export type ReportControllerRemoveData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/report/{id}';
+};
+
+export type ReportControllerRemoveResponses = {
+    /**
+     * Successful response
+     */
+    204: unknown;
+};
+
+export type ReportControllerInvoiceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/report/{id}/invoice';
+};
+
+export type ReportControllerInvoiceResponses = {
     /**
      * Successful response
      */

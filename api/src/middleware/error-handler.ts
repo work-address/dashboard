@@ -72,7 +72,7 @@ export class ErrorHandler implements ExpressErrorMiddlewareInterface {
       AppContainer.getContainer()
         .get<ILogger>('ILogger')
         .error('unexpected error', {
-          url: requestUrl,
+          url: RecordingPrivacy.loggedUrl(requestUrl),
           error: ErrorFormatter.forLog(
             error,
             RecordingPrivacy.sensitive(requestUrl),

@@ -381,6 +381,208 @@ export class AppStatisticsTest extends AbstractDatabaseIntegration {
     }
     expect(denied).to.equal(true)
   }
+
+  /** A run of `agentId`'s, working from `fromAt` to `toAt`. */
+  private agentRun(
+    run: Pick<
+      TimeAgent,
+      'userId' | 'projectId' | 'agentId' | 'product' | 'status'
+    > & { fromAt: Date; toAt: Date },
+  ) {
+    return this.conn.getRepository(TimeAgent).save({
+      runKey: randomUUID().split('-').join(''),
+      surface: 'cli',
+      sourceInstanceId: randomUUID(),
+      sourceSessionId: 's',
+      sourceRunId: 'r',
+      sourceAgentId: 'a',
+      prompt: null,
+      segments: [
+        {
+          state: 'running',
+          fromAt: run.fromAt.toISOString(),
+          toAt: run.toAt.toISOString(),
+          evidence: 'fixture',
+        },
+      ],
+      measurement: {
+        coverage: 'run',
+        mode: 'timer',
+        waitCoverage: 'none',
+        liveness: false,
+        provisional: false,
+        qualification: 'unqualified',
+        normalizerRevision: 1,
+        adapterVersion: '0',
+        runtimeVersion: '0',
+        schemaVersion: 1,
+      },
+      ...run,
+    })
+  }
+
+  @test()
+  async agentTimeIsKeptPerWorkerAndAgentAndRunsCountOnTheDayTheyStart() {
+    const owner = await this.userFixture.createPremiumUser()
+    const worker = await this.userFixture.createUser()
+    const colleague = await this.userFixture.createUser()
+    const project = await this.container
+      .get<ProjectFixture>('ProjectFixture')
+      .create(owner, EProjectState.ACTIVE)
+    project.workerAddresses = [worker.address, colleague.address]
+    await this.conn.manager.save(project)
+
+    // Yesterday in UTC, so nothing here depends on the hour the test runs.
+    const MIN = 60000
+    const midnight = new Date().setUTCHours(0, 0, 0, 0) - 86400000
+    const noon = midnight + 12 * 3600000
+    const at = (from: number, minutes: number) => ({
+      fromAt: new Date(from),
+      toAt: new Date(from + minutes * MIN),
+    })
+    const dayKey = (offset: number) =>
+      new Date(midnight + offset * 86400000).toISOString().slice(0, 10)
+    const [first, second, theirs] = [randomUUID(), randomUUID(), randomUUID()]
+    const on = { projectId: project.id }
+    // Two agents of one product, run by one worker at the same time.
+    await this.agentRun({
+      ...on,
+      userId: worker.id,
+      agentId: first,
+      product: 'claude-code',
+      status: 'completed',
+      ...at(noon, 30),
+    })
+    await this.agentRun({
+      ...on,
+      userId: worker.id,
+      agentId: second,
+      product: 'claude-code',
+      status: 'failed',
+      ...at(noon, 10),
+    })
+    // A colleague's run that crosses midnight: 10 minutes before, 20 after.
+    await this.agentRun({
+      ...on,
+      userId: colleague.id,
+      agentId: theirs,
+      product: 'codex',
+      status: 'completed',
+      ...at(midnight - 10 * MIN, 30),
+    })
+
+    const statistics =
+      this.container.get<StatisticsManager>('StatisticsManager')
+    const range = { from: dayKey(-2), to: dayKey(2), timeZone: 'UTC' }
+    const rowsOf = (
+      answer: Awaited<ReturnType<typeof statistics.agentsDaily>>,
+    ) =>
+      answer.daily
+        .map((row) => [row.day, row.userId, row.agentId, row.autonomousSeconds])
+        .sort((a, b) => String(a).localeCompare(String(b)))
+    const sorted = (rows: (string | number)[][]) =>
+      rows.sort((a, b) => String(a).localeCompare(String(b)))
+
+    const everyone = await statistics.agentsDaily(range, owner)
+    expect(rowsOf(everyone)).to.deep.equal(
+      sorted([
+        [dayKey(-1), colleague.id, theirs, 600],
+        [dayKey(0), colleague.id, theirs, 1200],
+        [dayKey(0), worker.id, first, 1800],
+        [dayKey(0), worker.id, second, 600],
+      ]),
+    )
+    // The product is still on every row, for a reader who sums by it.
+    expect(
+      everyone.daily
+        .filter((row) => row.product === 'claude-code')
+        .reduce((sum, row) => sum + row.autonomousSeconds, 0),
+    ).to.equal(2400)
+    expect(everyone.runs).to.deep.equal([
+      { product: 'claude-code', status: 'completed', count: 1 },
+      { product: 'claude-code', status: 'failed', count: 1 },
+      { product: 'codex', status: 'completed', count: 1 },
+    ])
+    // A run counts once, on the day it started.
+    expect(everyone.runsDaily).to.deep.equal([
+      { day: dayKey(-1), status: 'completed', count: 1 },
+      { day: dayKey(0), status: 'completed', count: 1 },
+      { day: dayKey(0), status: 'failed', count: 1 },
+    ])
+
+    // A worker reads their own agents and nobody else's.
+    const own = await statistics.agentsDaily(range, worker)
+    expect(rowsOf(own)).to.deep.equal(
+      sorted([
+        [dayKey(0), worker.id, first, 1800],
+        [dayKey(0), worker.id, second, 600],
+      ]),
+    )
+    expect(own.runsDaily).to.deep.equal([
+      { day: dayKey(0), status: 'completed', count: 1 },
+      { day: dayKey(0), status: 'failed', count: 1 },
+    ])
+
+    // The agent filter narrows the rows and both run counts.
+    const one = await statistics.agentsDaily(
+      { ...range, agentIds: [second] },
+      owner,
+    )
+    expect(rowsOf(one)).to.deep.equal([[dayKey(0), worker.id, second, 600]])
+    expect(one.runs).to.deep.equal([
+      { product: 'claude-code', status: 'failed', count: 1 },
+    ])
+    expect(one.runsDaily).to.deep.equal([
+      { day: dayKey(0), status: 'failed', count: 1 },
+    ])
+    // Someone else's agent is not a way round the worker's own scope.
+    const notMine = await statistics.agentsDaily(
+      { ...range, agentIds: [theirs] },
+      worker,
+    )
+    expect(notMine).to.deep.equal({ daily: [], runs: [], runsDaily: [] })
+    // An empty list narrows nothing.
+    expect(
+      rowsOf(await statistics.agentsDaily({ ...range, agentIds: [] }, owner)),
+    ).to.deep.equal(rowsOf(everyone))
+
+    // Cut by hour, the time is keyed by hour and the runs still by day.
+    const hourly = await statistics.agentsDaily(
+      { ...range, bucket: 'hour', agentIds: [first] },
+      owner,
+    )
+    expect(hourly.daily.map((row) => row.day)).to.deep.equal([
+      `${dayKey(0)}T12`,
+    ])
+    expect(hourly.runsDaily).to.deep.equal([
+      { day: dayKey(0), status: 'completed', count: 1 },
+    ])
+
+    // A run that began before the period is cut to it, and counted on the
+    // day it began: the counts always add up to `runs`.
+    const later = await statistics.agentsDaily(
+      { ...range, from: dayKey(0), agentIds: [theirs] },
+      owner,
+    )
+    expect(rowsOf(later)).to.deep.equal([
+      [dayKey(0), colleague.id, theirs, 1200],
+    ])
+    expect(later.runsDaily).to.deep.equal([
+      { day: dayKey(-1), status: 'completed', count: 1 },
+    ])
+
+    // No other route reads the agent filter.
+    const team = await statistics.team({ ...range, agentIds: [second] }, owner)
+    expect(
+      team.rows.map((row) => [row.userId, row.agentSeconds]).sort(),
+    ).to.deep.equal(
+      [
+        [colleague.id, 1800],
+        [worker.id, 2400],
+      ].sort(),
+    )
+  }
+
   @test()
   async rejectsInvalidUsageWithoutLosingTimeAndNeverEchoesAcknowledgement() {
     const owner = await this.userFixture.createPremiumUser()

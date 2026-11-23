@@ -6,6 +6,9 @@ export {
   StatisticsInsights,
   type AgentDailyRow,
   type AgentRunInput,
+  type AgentRunsDailyRow,
+  type AgentWorkedRow,
   type HourlyRow,
   type InsightEntry,
+  type PersonDailyRow,
 } from '@work-address/statistics-core'

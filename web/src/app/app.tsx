@@ -21,6 +21,8 @@ const SignInPage = lazy(() => import('@/pages/sign-in'))
 const ConnectPage = lazy(() => import('@/pages/connect'))
 const InvoicePage = lazy(() => import('@/pages/invoice'))
 const InvoicesPage = lazy(() => import('@/pages/invoices'))
+const ReportsPage = lazy(() => import('@/pages/reports'))
+const ReportPage = lazy(() => import('@/pages/report'))
 const NotFoundPage = lazy(() => import('@/pages/not-found'))
 
 const router = createBrowserRouter([
@@ -31,6 +33,12 @@ const router = createBrowserRouter([
       { path: routes.connect.schema, element: <ConnectPage /> },
     ],
     errorElement: <ErrorBoundary />,
+  },
+  {
+    // A shared report is for anyone with its link: no session, no sidebar.
+    element: <Layouts.BareLayout />,
+    errorElement: <ErrorBoundary />,
+    children: [{ path: routes.report.schema, element: <ReportPage /> }],
   },
   {
     element: <Layouts.PublicLayout />,
@@ -81,6 +89,10 @@ const router = createBrowserRouter([
       {
         path: routes.settings.schema,
         element: <SettingsPage />,
+      },
+      {
+        path: routes.reports.schema,
+        element: <ReportsPage />,
       },
       {
         path: routes.invoices.schema,

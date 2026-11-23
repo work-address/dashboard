@@ -8,6 +8,18 @@ export type StatisticsQuery = {
   timeZone: string
   /** How `time/daily` and `agents/daily` cut the period. */
   bucket?: 'day' | 'hour'
+  /** Only these agents' runs; `agents/daily` alone reads it. */
+  agentIds?: string[]
+}
+
+/**
+ * History the period reaches for but the plan of a project's owner hides:
+ * everything before `before`. Only the owner can lift it by upgrading.
+ */
+export type StatisticsHidden = {
+  /** An ISO instant. */
+  before: string
+  canUpgrade: boolean
 }
 
 /**
@@ -24,6 +36,10 @@ export type StatisticsTotalsRow = {
   manualSeconds?: number
   paidSeconds?: number
   unpaidSeconds?: number
+  /** Time covered by an invoice that has not been rejected, paid or not. */
+  invoicedSeconds?: number
+  /** The part of it still waiting to be paid. */
+  invoicedUnpaidSeconds?: number
   earnedCents?: number
   paidCents?: number
   unpaidCents?: number
@@ -71,8 +87,18 @@ export type StatisticsInsights = {
   clicksPerActiveHour: number | null
 }
 
+/** A period's totals, with what the plan hides of it. */
+export type StatisticsOverview = {
+  totals: StatisticsTotalsRow[]
+  hidden: StatisticsHidden | null
+}
+
+/** One agent's time on one of the reader's days. */
 export type StatisticsAgentDailyRow = {
   day: string
+  /** Whose agent it is. */
+  userId: string
+  agentId: string
   product: string
   assistedSeconds: number
   autonomousSeconds: number
@@ -85,9 +111,18 @@ export type StatisticsAgentRunCount = {
   count: number
 }
 
+/** Runs that started on one of the reader's days, by how they ended. */
+export type StatisticsAgentRunDay = {
+  day: string
+  status: string
+  count: number
+}
+
 export type StatisticsAgents = {
   daily: StatisticsAgentDailyRow[]
   runs: StatisticsAgentRunCount[]
+  runsDaily: StatisticsAgentRunDay[]
+  hidden: StatisticsHidden | null
 }
 
 /** One person's time on the reader's own projects. */

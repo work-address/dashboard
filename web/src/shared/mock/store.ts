@@ -18,6 +18,7 @@ type Collection =
   | 'runs'
   | 'agents'
   | 'credentials'
+  | 'reports'
 
 type Row = { id?: string; runKey?: string }
 
@@ -40,6 +41,7 @@ const emptyOverrides = (day: string): Overrides => ({
     runs: {},
     agents: {},
     credentials: {},
+    reports: {},
   },
 })
 

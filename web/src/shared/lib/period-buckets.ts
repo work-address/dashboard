@@ -7,7 +7,7 @@ import {
   startOfWeek,
 } from 'date-fns'
 
-import { fromDay, rangeLengthDays, toDay, type DateRange } from '@/shared'
+import { fromDay, rangeLengthDays, toDay, type DateRange } from './date-range'
 
 export type BucketSize = 'hour' | 'day' | 'week' | 'month'
 

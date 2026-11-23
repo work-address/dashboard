@@ -87,16 +87,23 @@ export class StatisticsRepository {
       .orderBy('SUM(usage.seconds)', 'DESC')
       .getRawMany()
   }
-  /** Tracked time per day and project, on the same terms as `ProjectTotals`. */
-  public timeDaily(scope: StatisticsScope) {
+  /**
+   * The entries a reader counts, on the same terms as `ProjectTotals`: every
+   * one on a project they own or only view, their own elsewhere.
+   */
+  private countable(scope: StatisticsScope): SelectQueryBuilder<Time> {
     const q = this.base(scope)
     const shared = this.ownOr(scope, true)
-    q.andWhere(
+    return q.andWhere(
       shared.length
         ? '(project.id IN (:...shared) OR time."userId" = :user)'
         : 'time."userId" = :user',
       { shared, user: scope.user.id },
     )
+  }
+  /** Tracked time per day and project, on the same terms as `ProjectTotals`. */
+  public timeDaily(scope: StatisticsScope) {
+    const q = this.countable(scope)
     // An hour bucket keeps the day in front, so keys sort and group alike.
     const day =
       scope.query.bucket === 'hour'
@@ -113,6 +120,28 @@ export class StatisticsRepository {
       .groupBy(day)
       .addGroupBy('project.id')
       .orderBy(day, 'ASC')
+      .getRawMany()
+  }
+
+  /**
+   * Tracked time per day, project and person, counted as `timeDaily` counts
+   * it, always by the day. Whether the reader may see the people on a project
+   * is not decided here: a viewer's rows still name them.
+   */
+  public timeDailyByPerson(scope: StatisticsScope) {
+    const day = 'TO_CHAR(time."fromAt" AT TIME ZONE :zone, \'YYYY-MM-DD\')'
+    return this.countable(scope)
+      .select(day, 'day')
+      .addSelect('project.id', 'projectId')
+      .addSelect('time."userId"', 'userId')
+      .addSelect(
+        'COALESCE(SUM(GREATEST(0, EXTRACT(EPOCH FROM (time."toAt"-time."fromAt")))),0)',
+        'trackedSeconds',
+      )
+      .setParameter('zone', scope.query.timeZone)
+      .groupBy(day)
+      .addGroupBy('project.id')
+      .addGroupBy('time."userId"')
       .getRawMany()
   }
 
@@ -159,9 +188,14 @@ export class StatisticsRepository {
 
   /**
    * Agent runs overlapping the period: every worker's on projects the caller
-   * owns, their own elsewhere, never on projects they only view.
+   * owns, their own elsewhere, never on projects they only view. `only`
+   * narrows them to some of the scope's projects, or to some agents.
    */
-  public agentRuns(scope: StatisticsScope, projectIds?: string[]) {
+  public agentRuns(
+    scope: StatisticsScope,
+    only: { projectIds?: string[]; agentIds?: string[] } = {},
+  ) {
+    const { projectIds, agentIds } = only
     const owned = scope.owners.filter(
       (id) => !projectIds || projectIds.includes(id),
     )
@@ -195,6 +229,8 @@ export class StatisticsRepository {
       q.andWhere('run."invoiceId" = :invoice', {
         invoice: scope.query.invoiceId,
       })
+    if (agentIds?.length)
+      q.andWhere('run."agentId" IN (:...agents)', { agents: agentIds })
     return q.getMany()
   }
 
@@ -261,6 +297,25 @@ export class StatisticsRepository {
         select: { id: true, name: true, address: true },
       })
     return new Map(users.map((u) => [u.id, u.name || u.address]))
+  }
+
+  /**
+   * What these workers call their agents, by `workerId/agentId`. A removed
+   * agent stays on its worker's list, so it keeps its name.
+   */
+  public async agentNames(userIds: string[]): Promise<Map<string, string>> {
+    if (!userIds.length) return new Map()
+    const workers = await getDataSource()
+      .getRepository(User)
+      .find({ where: { id: In(userIds) }, select: { id: true, agents: true } })
+    return new Map(
+      workers.flatMap((worker) =>
+        (worker.agents ?? []).map((agent): [string, string] => [
+          `${worker.id}/${agent.id}`,
+          agent.name,
+        ]),
+      ),
+    )
   }
 
   public gaps(scope: StatisticsScope) {

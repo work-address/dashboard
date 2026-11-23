@@ -7,6 +7,9 @@ import { UserSettingsManager } from '@/service/user-settings-manager'
 import { StatisticsManager } from '@/service/statistics-manager'
 import { ProjectTotals } from '@/service/project-totals'
 import { StatisticsRepository } from '@/repository/statistics-repository'
+import { SharedReportRepository } from '@/repository/shared-report-repository'
+import { SharedReportLimit } from '@/service/shared-report-limit'
+import { SharedReportManager } from '@/service/shared-report-manager'
 
 import { IConfigParameters } from '@/model/config'
 
@@ -73,6 +76,18 @@ export class AppContainer {
     container
       .bind<StatisticsRepository>('StatisticsRepository')
       .to(StatisticsRepository)
+
+    container
+      .bind<SharedReportRepository>('SharedReportRepository')
+      .to(SharedReportRepository)
+    container
+      .bind<SharedReportManager>('SharedReportManager')
+      .to(SharedReportManager)
+    // One allowance per address for the whole process, not one per request.
+    container
+      .bind<SharedReportLimit>('SharedReportLimit')
+      .to(SharedReportLimit)
+      .inSingletonScope()
 
     container
       .bind<UserSettingsManager>('UserSettingsManager')

@@ -1,8 +1,10 @@
 import {
   CONTRACT_SCENARIOS,
+  contractSpan,
   runScenario,
   type ContractAdapter,
   type ContractPerson,
+  type ContractReader,
   type ContractRequest,
 } from '@work-address/api-contract'
 import { setupServer } from 'msw/node'
@@ -12,7 +14,13 @@ import { handlers } from './handlers'
 import { DEMO_ACCESS_TOKEN } from './session'
 import { demoDb } from './store'
 
-import type { MockInvoice, MockProject, MockTime } from './db'
+import type {
+  MockInvoice,
+  MockProject,
+  MockReport,
+  MockRun,
+  MockTime,
+} from './db'
 
 const server = setupServer(...handlers)
 
@@ -23,6 +31,7 @@ const PEOPLE: Record<ContractPerson, string> = {
   worker: 'contract-worker',
   viewer: 'contract-viewer',
   outsider: 'contract-outsider',
+  freeOwner: 'contract-free-owner',
 }
 
 /** The demo's mock over MSW, held to what the API answers. */
@@ -34,9 +43,17 @@ const mock: ContractAdapter = {
       ...person,
       id,
       address: `address-${id}`,
-      premium: true,
+      premium: id !== PEOPLE.freeOwner,
     }))
-    const project = (id: string, state: MockProject['state']): MockProject => ({
+    const project = (
+      id: string,
+      state: MockProject['state'],
+      people: Pick<MockProject, 'ownerId' | 'workerIds' | 'viewerIds'> = {
+        ownerId: PEOPLE.owner,
+        workerIds: [PEOPLE.worker],
+        viewerIds: [PEOPLE.viewer],
+      },
+    ): MockProject => ({
       id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -44,9 +61,7 @@ const mock: ContractAdapter = {
       text: '',
       rateHour: '60',
       state,
-      ownerId: PEOPLE.owner,
-      workerIds: [PEOPLE.worker],
-      viewerIds: [PEOPLE.viewer],
+      ...people,
       trackScreenshots: false,
       trackProcesses: false,
       trackAgents: false,
@@ -59,7 +74,19 @@ const mock: ContractAdapter = {
       screenshotRetentionDays: null,
       deletedAt: null,
     })
-    db.projects = [project('active', 'Active'), project('closed', 'Inactive')]
+    db.projects = [
+      {
+        ...project('active', 'Active'),
+        // The worker's first agent is on the project at $12/h.
+        agentRates: { [`${PEOPLE.worker}:claude-code`]: 1200 },
+      },
+      project('closed', 'Inactive'),
+      project('free', 'Active', {
+        ownerId: PEOPLE.freeOwner,
+        workerIds: [],
+        viewerIds: [],
+      }),
+    ]
     const entry = (
       id: string,
       hoursAgo: number,
@@ -97,6 +124,12 @@ const mock: ContractAdapter = {
       entry('closed', 2, { projectId: 'closed' }),
       entry('own', 5, { userId: PEOPLE.owner }),
       entry('settled', 300, { invoiceId: 'settled' }),
+      entry('free', 4, {
+        projectId: 'free',
+        userId: PEOPLE.freeOwner,
+        invoiceId: 'free',
+        isPaid: true,
+      }),
     ]
     const invoice: MockInvoice = {
       id: 'invoice',
@@ -125,8 +158,88 @@ const mock: ContractAdapter = {
         paidAt: new Date().toISOString(),
         timeIds: ['settled'],
       },
+      {
+        ...invoice,
+        id: 'free',
+        projectId: 'free',
+        userId: PEOPLE.freeOwner,
+        fromAt: new Date(Date.now() - 5 * HOUR).toISOString(),
+        toAt: new Date(Date.now() - 4 * HOUR).toISOString(),
+        timeIds: ['free'],
+      },
     ]
-    db.runs = []
+    // Timed from the draft entry itself, so what overlaps it is exact.
+    const draftFrom = Date.parse(db.times[0].fromAt)
+    const run = (
+      product: string,
+      status: string,
+      from: number,
+      minutes: number,
+    ): MockRun => ({
+      runKey: `run-${product}`,
+      userId: PEOPLE.worker,
+      projectId: 'active',
+      // Its source's own id: the demo's agent is `userId:product`.
+      agentId: `instance-${product}`,
+      product,
+      surface: 'cli',
+      fromAt: new Date(from).toISOString(),
+      toAt: new Date(from + minutes * 60_000).toISOString(),
+      status,
+      segments: [
+        {
+          state: 'running',
+          fromAt: new Date(from).toISOString(),
+          toAt: new Date(from + minutes * 60_000).toISOString(),
+          evidence: 'contract',
+        },
+      ],
+      prompt: null,
+      invoiceId: null,
+      isPaid: false,
+    })
+    const agentRunFromUnix = draftFrom - 10 * 60_000
+    const otherAgentRunFromUnix = draftFrom - 26 * HOUR
+    db.runs = [
+      run('claude-code', 'completed', agentRunFromUnix, 30),
+      run('codex', 'failed', otherAgentRunFromUnix, 10),
+    ]
+    db.reports = []
+    // Each a second newer than the one before, so a list has an order.
+    const share = (
+      id: string,
+      sharer: ContractPerson,
+      fields: Partial<MockReport> = {},
+    ) =>
+      db.reports.push({
+        id,
+        createdAt: new Date(
+          Date.now() - 60_000 + db.reports.length * 1000,
+        ).toISOString(),
+        userId: PEOPLE[sharer],
+        token: `link-${id}`.padEnd(43, '-'),
+        title: null,
+        ...contractSpan(),
+        projectIds: ['active'],
+        userIds: [],
+        showAmounts: false,
+        invoiceId: null,
+        ...fields,
+      })
+    share('report-owner', 'owner', { showAmounts: true })
+    share('report-viewer', 'viewer')
+    share('report-invoiced', 'worker', { invoiceId: 'invoice' })
+    // The newest of the worker's. The one they deleted is simply not kept.
+    share('report-worker', 'worker')
+    share('report-free', 'freeOwner', { projectIds: ['free'] })
+    share('report-free-recent', 'freeOwner', {
+      projectIds: ['free'],
+      ...contractSpan(7),
+    })
+    const linkOf = (id: string) => ({
+      id,
+      token: db.reports.find((row) => row.id === id)?.token ?? `gone-${id}`,
+    })
 
     return {
       project: 'active',
@@ -143,15 +256,30 @@ const mock: ContractAdapter = {
       closedEntry: 'closed',
       ownerEntry: 'own',
       settledEntry: 'settled',
+      agent: `${PEOPLE.worker}:claude-code`,
+      otherAgent: `${PEOPLE.worker}:codex`,
+      agentRunFromUnix,
+      otherAgentRunFromUnix,
+      freeProject: 'free',
+      freeInvoice: 'free',
+      ownerReport: linkOf('report-owner'),
+      workerReport: linkOf('report-worker'),
+      viewerReport: linkOf('report-viewer'),
+      invoicedReport: linkOf('report-invoiced'),
+      deletedReport: linkOf('report-deleted'),
+      freeReport: linkOf('report-free'),
+      freeRecentReport: linkOf('report-free-recent'),
     }
   },
 
-  async send(person: ContractPerson, request: ContractRequest) {
-    demoDb().meId = PEOPLE[person]
+  async send(reader: ContractReader, request: ContractRequest) {
+    // With no session the demo is still someone's: a stranger's here, so a
+    // route that is open to anyone cannot lean on who is signed in.
+    demoDb().meId = PEOPLE[reader === 'anyone' ? 'outsider' : reader]
     const response = await fetch(`http://demo.test/api${request.path}`, {
       method: request.method.toUpperCase(),
       headers: {
-        authorization: DEMO_ACCESS_TOKEN,
+        ...(reader === 'anyone' ? {} : { authorization: DEMO_ACCESS_TOKEN }),
         'content-type': 'application/json',
       },
       body:
@@ -159,8 +287,10 @@ const mock: ContractAdapter = {
           ? undefined
           : JSON.stringify(request.body ?? {}),
     })
+    // A deletion answers 204, with nothing to parse.
+    const text = await response.text()
 
-    return { status: response.status, body: await response.json() }
+    return { status: response.status, body: text ? JSON.parse(text) : null }
   },
 }
 

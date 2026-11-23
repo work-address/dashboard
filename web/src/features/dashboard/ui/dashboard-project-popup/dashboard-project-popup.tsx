@@ -5,12 +5,6 @@ import styled from 'styled-components'
 
 import { $dashboardRange } from '../../model/dashboard-filters'
 import {
-  bucketKeyOf,
-  bucketLabels,
-  periodBuckets,
-  visibleBuckets,
-} from '../../model/period-buckets'
-import {
   projectSummary,
   type ProjectWithAccess,
 } from '../../model/project-summary'
@@ -22,6 +16,10 @@ import {
   statisticsProjectAppsQuery,
 } from '@/entities/statistics'
 import {
+  bucketKeyOf,
+  bucketLabels,
+  periodBuckets,
+  visibleBuckets,
   ChartTooltip,
   BucketBarChart,
   SERIES_COLORS,

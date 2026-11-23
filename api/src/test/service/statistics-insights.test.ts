@@ -1,5 +1,10 @@
 import { expect } from 'chai'
-import { InsightEntry, StatisticsInsights } from '@/service/statistics-insights'
+import { hiddenHistory } from '@work-address/statistics-core'
+import {
+  AgentRunInput,
+  InsightEntry,
+  StatisticsInsights,
+} from '@/service/statistics-insights'
 import { Span } from '@/service/time-spans'
 import { AgentSegment } from '@/model/agent'
 
@@ -34,6 +39,23 @@ const segment = (
   fromAt: new Date(nine + from * MIN).toISOString(),
   toAt: new Date(nine + to * MIN).toISOString(),
   evidence: 'fixture',
+})
+
+/** A run of `agentId`, run by `userId`, working from `from` to `to`. */
+const run = (
+  userId: string,
+  agentId: string,
+  from: number,
+  to: number,
+  fields: Partial<AgentRunInput> = {},
+): AgentRunInput => ({
+  userId,
+  projectId: 'p',
+  agentId,
+  product: 'claude-code',
+  status: 'completed',
+  segments: [segment('running', from, to)],
+  ...fields,
 })
 
 describe('StatisticsInsights', () => {
@@ -170,12 +192,275 @@ describe('StatisticsInsights', () => {
     expect(rows).to.deep.equal([
       {
         day: '2026-10-19',
+        userId: 'u',
+        agentId: 'a',
         product: 'claude-code',
         assistedSeconds: 20 * 60,
         autonomousSeconds: 30 * 60,
         waitSeconds: 10 * 60,
       },
     ])
+  })
+
+  it('keeps a row for each worker and agent, even of one product on one day', () => {
+    const rows = StatisticsInsights.agentDaily(
+      [
+        run('u', 'a', 0, 30),
+        // The same worker's second agent of the same product, at the same time.
+        run('u', 'b', 0, 20),
+        // Another worker's agent, and the first agent again on another project.
+        run('v', 'c', 0, 10),
+        run('u', 'a', 40, 50, { projectId: 'q' }),
+      ],
+      [],
+      [nine - 60 * MIN, nine + 120 * MIN],
+      'UTC',
+    )
+    expect(
+      rows.map((row) => [row.userId, row.agentId, row.autonomousSeconds]),
+    ).to.deep.equal([
+      // One row for an agent's day, whatever projects it worked on.
+      ['u', 'a', 40 * 60],
+      ['u', 'b', 20 * 60],
+      ['v', 'c', 10 * 60],
+    ])
+    expect(rows.every((row) => row.product === 'claude-code')).to.equal(true)
+    // A reader who wants the product's day sums its rows.
+    expect(rows.reduce((sum, row) => sum + row.autonomousSeconds, 0)).to.equal(
+      70 * 60,
+    )
+  })
+
+  it('counts each run once, on the reader day it started, by status', () => {
+    const at = (minutes: number) => new Date(nine + minutes * MIN)
+    const rows = StatisticsInsights.runsDaily(
+      [
+        { fromAt: at(0), status: 'completed' },
+        { fromAt: at(30), status: 'completed' },
+        { fromAt: at(60), status: 'failed' },
+        // 16:30 UTC on the 19th is 01:30 on the 20th in Tokyo; ISO text too.
+        { fromAt: at(450).toISOString(), status: 'completed' },
+      ],
+      'Asia/Tokyo',
+    )
+    expect(rows).to.deep.equal([
+      { day: '2026-10-19', status: 'completed', count: 2 },
+      { day: '2026-10-19', status: 'failed', count: 1 },
+      { day: '2026-10-20', status: 'completed', count: 1 },
+    ])
+    expect(StatisticsInsights.runsDaily([], 'UTC')).to.deep.equal([])
+  })
+
+  it('says history is hidden only where a limit falls inside the period', () => {
+    const cutOff = Date.UTC(2026, 9, 5)
+    const earlier = cutOff - 86400000
+    const later = cutOff + 86400000
+
+    // Nothing limited, or a period that starts at or after the limit.
+    expect(
+      hiddenHistory([{ keptFrom: null, owned: true }], earlier),
+    ).to.deep.equal({})
+    expect(
+      hiddenHistory([{ keptFrom: cutOff, owned: true }], cutOff),
+    ).to.deep.equal({})
+    expect(
+      hiddenHistory([{ keptFrom: cutOff, owned: true }], later),
+    ).to.deep.equal({})
+
+    // Someone else's limit: the reader cannot lift it.
+    expect(
+      hiddenHistory(
+        [
+          { keptFrom: cutOff, owned: false },
+          { keptFrom: null, owned: true },
+        ],
+        earlier,
+      ),
+    ).to.deep.equal({
+      hiddenBefore: new Date(cutOff).toISOString(),
+      canUpgrade: false,
+    })
+
+    // The latest limit the period reaches is the one reported, and owning
+    // any project that hides history is enough to upgrade.
+    expect(
+      hiddenHistory(
+        [
+          { keptFrom: cutOff, owned: true },
+          { keptFrom: later, owned: false },
+        ],
+        earlier,
+      ),
+    ).to.deep.equal({
+      hiddenBefore: new Date(later).toISOString(),
+      canUpgrade: true,
+    })
+    // A limit the period does not reach is not one of them.
+    expect(
+      hiddenHistory(
+        [
+          { keptFrom: earlier, owned: true },
+          { keptFrom: later, owned: false },
+        ],
+        cutOff,
+      ),
+    ).to.deep.equal({
+      hiddenBefore: new Date(later).toISOString(),
+      canUpgrade: false,
+    })
+  })
+
+  it('folds people into the project total where the reader only views', () => {
+    const rows = StatisticsInsights.dailyByPerson(
+      [
+        {
+          day: '2026-10-19',
+          projectId: 'own',
+          userId: 'u',
+          trackedSeconds: 600,
+        },
+        {
+          day: '2026-10-19',
+          projectId: 'own',
+          userId: 'v',
+          trackedSeconds: 300,
+        },
+        // The same person twice in a day is one row.
+        {
+          day: '2026-10-19',
+          projectId: 'own',
+          userId: 'u',
+          trackedSeconds: 0.4,
+        },
+        {
+          day: '2026-10-19',
+          projectId: 'seen',
+          userId: 'u',
+          trackedSeconds: 60,
+        },
+        {
+          day: '2026-10-19',
+          projectId: 'seen',
+          userId: 'v',
+          trackedSeconds: 30,
+        },
+        {
+          day: '2026-10-20',
+          projectId: 'seen',
+          userId: 'v',
+          trackedSeconds: 90,
+        },
+      ],
+      ['seen'],
+    )
+    expect(rows).to.deep.equal([
+      { day: '2026-10-19', projectId: 'own', userId: 'u', trackedSeconds: 600 },
+      { day: '2026-10-19', projectId: 'own', userId: 'v', trackedSeconds: 300 },
+      // No `userId` key at all: absent, not null.
+      { day: '2026-10-19', projectId: 'seen', trackedSeconds: 90 },
+      { day: '2026-10-20', projectId: 'seen', trackedSeconds: 90 },
+    ])
+    expect(StatisticsInsights.dailyByPerson([], [])).to.deep.equal([])
+  })
+
+  it("counts an agent's work per day and project, assisted or not, waits apart", () => {
+    const rows = StatisticsInsights.agentWorkedDaily(
+      [
+        {
+          ...run('u', 'a', 0, 30),
+          segments: [
+            segment('running', 0, 30),
+            segment('human_wait', 30, 40),
+            segment('unknown', 40, 50),
+          ],
+        },
+        // The same agent overlapping itself on the project counts once...
+        run('u', 'a', 20, 30),
+        // ...and its work on another project is that project's.
+        run('u', 'a', 0, 10, { projectId: 'q' }),
+        run('v', 'b', 0, 5),
+        // Waiting alone is no work, so no row.
+        {
+          ...run('w', 'c', 0, 10),
+          segments: [segment('human_wait', 0, 10)],
+        },
+      ],
+      [nine - 60 * MIN, nine + 120 * MIN],
+      'UTC',
+    )
+    expect(rows).to.deep.equal([
+      {
+        day: '2026-10-19',
+        projectId: 'p',
+        userId: 'u',
+        agentId: 'a',
+        workedSeconds: 40 * 60,
+      },
+      {
+        day: '2026-10-19',
+        projectId: 'p',
+        userId: 'v',
+        agentId: 'b',
+        workedSeconds: 5 * 60,
+      },
+      {
+        day: '2026-10-19',
+        projectId: 'q',
+        userId: 'u',
+        agentId: 'a',
+        workedSeconds: 10 * 60,
+      },
+    ])
+    // Cut to the range and at the reader's midnight, as the agent report is.
+    const cut = StatisticsInsights.agentWorkedDaily(
+      [run('u', 'a', 750, 810)],
+      [nine - 600 * MIN, nine + 795 * MIN],
+      'Etc/GMT-2',
+    )
+    expect(cut.map((row) => [row.day, row.workedSeconds])).to.deep.equal([
+      ['2026-10-19', 30 * 60],
+      ['2026-10-20', 15 * 60],
+    ])
+    // The same seconds the agent report splits into assisted and autonomous.
+    const split = StatisticsInsights.agentDaily(
+      [run('u', 'a', 0, 30)],
+      [{ userId: 'u', projectId: 'p', span: [nine, nine + 20 * MIN] }],
+      [nine - 60 * MIN, nine + 120 * MIN],
+      'UTC',
+    )
+    expect(split[0].assistedSeconds + split[0].autonomousSeconds).to.equal(
+      StatisticsInsights.agentWorkedDaily(
+        [run('u', 'a', 0, 30)],
+        [nine - 60 * MIN, nine + 120 * MIN],
+        'UTC',
+      )[0].workedSeconds,
+    )
+  })
+
+  it('prices each agent on a project once, at the rate given', () => {
+    const row = (
+      day: string,
+      projectId: string,
+      agentId: string,
+      workedSeconds: number,
+    ) => ({ day, projectId, userId: 'u', agentId, workedSeconds })
+    const cents = StatisticsInsights.agentCents(
+      [
+        // 20 seconds a day at $10/h is 5.6 cents a day: rounded once over the
+        // three days it is 17, where rounding each day would make it 18.
+        row('2026-10-19', 'p', 'a', 20),
+        row('2026-10-20', 'p', 'a', 20),
+        row('2026-10-21', 'p', 'a', 20),
+        // The same agent on another project has that project's rate.
+        row('2026-10-19', 'q', 'a', 3600),
+        // An agent with no rate is worth nothing.
+        row('2026-10-19', 'p', 'b', 3600),
+      ],
+      ({ projectId, agentId }) =>
+        agentId === 'b' ? 0 : projectId === 'p' ? 1000 : 2500,
+    )
+    expect(cents).to.equal(17 + 2500)
+    expect(StatisticsInsights.agentCents([], () => 1000)).to.equal(0)
   })
 
   it('counts unclassified time as worked, and never time with the timer off', () => {
@@ -201,6 +486,8 @@ describe('StatisticsInsights', () => {
     expect(rows).to.deep.equal([
       {
         day: '2026-10-19',
+        userId: 'u',
+        agentId: 'a',
         product: 'codex',
         assistedSeconds: 20 * 60,
         autonomousSeconds: 30 * 60,

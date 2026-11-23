@@ -1,9 +1,9 @@
-import { bucketKeyOf, type BucketSize } from './period-buckets'
-
 import type {
   StatisticsAgentDailyRow,
   StatisticsDailyRow,
 } from '@/entities/statistics'
+
+import { bucketKeyOf, type BucketSize } from '@/shared'
 
 type WeekStart = 0 | 1 | 2 | 3 | 4 | 5 | 6
 

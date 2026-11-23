@@ -30,6 +30,7 @@ import {
   DashboardProjectsSearchInput,
   DashboardSummary,
   $dashboardCanTrack,
+  $dashboardFilters,
   $dashboardLocations,
   $dashboardProjectIds,
   $dashboardScreenshots,
@@ -43,6 +44,7 @@ import {
   ProjectsTable,
   type ProjectsTablePeriodTotals,
 } from '@/features/projects'
+import { ShareReport, toReportDraft } from '@/features/shared-report'
 import { TimeLocationsMap, TimeScreenshotStrip } from '@/features/time'
 import {
   Button,
@@ -76,6 +78,7 @@ export default function DashboardPage() {
     projects,
     periodRows,
     selectedProjectIds,
+    filters,
     screenshots,
     screenshotsLoaded,
     locations,
@@ -93,6 +96,7 @@ export default function DashboardPage() {
     projects: $projects,
     periodRows: statisticsOverviewQuery.$data,
     selectedProjectIds: $dashboardProjectIds,
+    filters: $dashboardFilters,
     screenshots: $dashboardScreenshots,
     screenshotsLoaded: $recentScreenshotsShown,
     locations: $dashboardLocations,
@@ -164,6 +168,25 @@ export default function DashboardPage() {
   // place is held while the projects load, so the chart does not narrow.
   const showSession = projectsLoading || canTrack
 
+  // What "Share report" would share: the period and filters as they are set.
+  const reportDraft = useMemo(
+    () =>
+      toReportDraft({
+        range: filters.range,
+        projectIds: filters.projectIds,
+        userIds: filters.userIds,
+        visibleProjectIds: projects
+          .map((project) => project.id)
+          .filter((id): id is string => Boolean(id)),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
+    [filters, projects],
+  )
+  // Money is in the period's figures only for a reader who may see it.
+  const canShowAmounts = (periodRows ?? []).some(
+    (row) => row.earnedCents !== undefined,
+  )
+
   const load = useCallback(() => {
     fetchProjectsEvent()
   }, [fetchProjectsEvent])
@@ -194,7 +217,13 @@ export default function DashboardPage() {
                   <HeaderTools>
                     {/* Whether the figures are the period's latest. */}
                     <Freshness pending={periodPending} failed={periodFailed} />
-                    <DashboardFilterBar />
+                    <Scope>
+                      <DashboardFilterBar />
+                      <ShareReport
+                        draft={reportDraft}
+                        canShowAmounts={canShowAmounts}
+                      />
+                    </Scope>
                   </HeaderTools>
                 )
               }
@@ -374,6 +403,20 @@ const Overview = styled.div`
 
 /* The status above the filters, both on the right; below xl, the filters'
    own full-width row with the status on the left above it. */
+/* The filters and what acts on them, on one line where there is room. */
+const Scope = styled.div`
+  display: grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: var(--ui-space-3);
+  min-width: 0;
+
+  ${(p) => p.theme.breakpoints.down('xl')} {
+    grid-auto-flow: row;
+    justify-items: stretch;
+  }
+`
+
 const HeaderTools = styled.div`
   display: grid;
   justify-items: end;

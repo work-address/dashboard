@@ -285,10 +285,41 @@ export class AgentControllerTest extends BaseControllerTest {
     expect(team[0].trackedSeconds).to.equal(0)
     expect(team[0].name).to.equal(s.worker.name || s.worker.address)
 
-    const { daily } = (await owner.post('/statistics/agents/daily', range)).data
+    const agents = (await owner.post('/statistics/agents/daily', range)).data
+    const { daily } = agents
     expect(daily).to.have.length(1)
     expect(daily[0].product).to.equal('codex')
     expect(daily[0].assistedSeconds + daily[0].autonomousSeconds).to.equal(180)
+    // The row says whose agent worked, and the run counts on the day it began.
+    expect(daily[0].userId).to.equal(s.worker.id)
+    expect(daily[0].agentId).to.equal(s.agent.id)
+    expect(agents.runs).to.have.length(1)
+    expect(agents.runsDaily).to.have.length(1)
+    expect(agents.runsDaily[0]).to.include({
+      status: agents.runs[0].status,
+      count: 1,
+    })
+    expect(agents.runsDaily[0].day).to.match(/^\d{4}-\d{2}-\d{2}$/)
+
+    const only = (agentIds: unknown) =>
+      owner.post('/statistics/agents/daily', { ...range, agentIds })
+    expect((await only([s.agent.id])).data.daily).to.deep.equal(daily)
+    expect((await only([randomUUID()])).data).to.deep.equal({
+      daily: [],
+      runs: [],
+      runsDaily: [],
+    })
+    // Ids are checked before they reach a query, and a list has a limit.
+    expect((await only(['codex'])).status).to.equal(400)
+    expect(
+      (await only(Array.from({ length: 101 }, () => randomUUID()))).status,
+    ).to.equal(400)
+    // The team report takes the same body and does not read the filter.
+    const filtered = await owner.post('/statistics/team', {
+      ...range,
+      agentIds: [randomUUID()],
+    })
+    expect(filtered.data.rows[0].agentSeconds).to.equal(180)
   }
 
   @test() async timeWithTheTimerOffCountsInNoStatistic() {

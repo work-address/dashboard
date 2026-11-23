@@ -2,9 +2,14 @@ import { StatisticsInsights } from '@work-address/statistics-core'
 import { describe, expect, it } from 'vitest'
 
 import { buildDb, type Db } from './db'
-import { DEFAULT_DEMO_SETTINGS, type DemoRole } from './settings'
-import { shapeRun, shapeTime } from './shape'
 import {
+  DEFAULT_DEMO_SETTINGS,
+  type DemoRole,
+  type DemoSettings,
+} from './settings'
+import { agentIdOf, shapeRun, shapeTime } from './shape'
+import {
+  agentsDaily,
   DemoHttpError,
   insightsMe,
   overview,
@@ -16,8 +21,11 @@ import {
 
 const NOW = new Date(2026, 9, 21, 15, 30).getTime()
 
-const db = (role: DemoRole, world: 'typical' | 'busy' = 'typical') =>
-  buildDb({ ...DEFAULT_DEMO_SETTINGS, role, world }, NOW)
+const db = (
+  role: DemoRole,
+  world: 'typical' | 'busy' = 'typical',
+  plan: DemoSettings['plan'] = 'premium',
+) => buildDb({ ...DEFAULT_DEMO_SETTINGS, role, world, plan }, NOW)
 
 const QUERY: StatisticsQuery = {
   from: '2026-09-01',
@@ -115,6 +123,175 @@ describe('demo statistics per role', () => {
         ),
       ),
     ).toBe(403)
+  })
+})
+
+describe('demo invoiced time', () => {
+  const spanSeconds = (times: { fromAt: string; toAt: string }[]) =>
+    times.reduce(
+      (sum, time) =>
+        sum + (Date.parse(time.toAt) - Date.parse(time.fromAt)) / 1000,
+      0,
+    )
+
+  it('counts what an invoice covers, and what of it is not marked paid', () => {
+    const data = db('owner')
+    const scope = statisticsScope(data, data.meId, QUERY, NOW)
+    const rows = overview(scope).totals
+    const inPeriod = data.times.filter(
+      (time) =>
+        Date.parse(time.fromAt) >= scope.from &&
+        Date.parse(time.fromAt) < scope.to,
+    )
+    const invoiced = inPeriod.filter((time) => time.invoiceId)
+    const sum = (key: string) =>
+      rows.reduce((all, row) => all + Number(row[key]), 0)
+
+    expect(invoiced.length).toBeGreaterThan(0)
+    expect(invoiced.some((time) => time.isPaid)).toBe(true)
+    expect(invoiced.some((time) => !time.isPaid)).toBe(true)
+    expect(sum('invoicedSeconds')).toBe(spanSeconds(invoiced))
+    expect(sum('invoicedUnpaidSeconds')).toBe(
+      spanSeconds(invoiced.filter((time) => !time.isPaid)),
+    )
+  })
+
+  it('never gives a viewer invoiced time', () => {
+    for (const row of totalsOf(db('viewer'))) {
+      expect(row).not.toHaveProperty('invoicedSeconds')
+      expect(row).not.toHaveProperty('invoicedUnpaidSeconds')
+    }
+  })
+})
+
+describe('demo hidden history', () => {
+  const INSIDE: StatisticsQuery = { ...QUERY, from: '2026-10-10' }
+  const answers = (data: Db, query: StatisticsQuery) => {
+    const scope = statisticsScope(data, data.meId, query, NOW)
+
+    return [overview(scope), agentsDaily(scope)]
+  }
+
+  it('says from when the free plan hides history, to the owner who can upgrade', () => {
+    for (const answer of answers(db('owner', 'typical', 'free'), QUERY)) {
+      expect(answer).toMatchObject({
+        hiddenBefore: new Date(NOW - 14 * 86_400_000).toISOString(),
+        canUpgrade: true,
+      })
+    }
+  })
+
+  it('says nothing for a period inside the free plan’s window', () => {
+    for (const answer of answers(db('owner', 'typical', 'free'), INSIDE)) {
+      expect(answer).not.toHaveProperty('hiddenBefore')
+      expect(answer).not.toHaveProperty('canUpgrade')
+    }
+  })
+
+  it('says nothing on Premium', () => {
+    for (const answer of answers(db('owner'), QUERY)) {
+      expect(answer).not.toHaveProperty('hiddenBefore')
+      expect(answer).not.toHaveProperty('canUpgrade')
+    }
+  })
+
+  it('follows the project owner’s plan, not the reader’s', () => {
+    // The demo's other people are on Premium, so nothing a free worker reads
+    // on their projects is hidden.
+    for (const answer of answers(db('worker', 'typical', 'free'), QUERY)) {
+      expect(answer).not.toHaveProperty('hiddenBefore')
+    }
+  })
+})
+
+describe('demo agent time', () => {
+  const agents = (data: Db, query: StatisticsQuery = QUERY) =>
+    agentsDaily(statisticsScope(data, data.meId, query, NOW))
+
+  it('keeps a row per day, worker and agent, by the demo’s agent id', () => {
+    const data = db('owner')
+    const { daily } = agents(data)
+
+    expect(daily.length).toBeGreaterThan(0)
+    expect(new Set(daily.map((row) => row.userId)).size).toBeGreaterThan(1)
+    for (const row of daily) {
+      expect(row.agentId).toBe(agentIdOf(row))
+    }
+    const keys = daily.map((row) => `${row.day}|${row.userId}|${row.agentId}`)
+
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  it('counts every run once, on the day it started', () => {
+    const { runs, runsDaily } = agents(db('owner'))
+    const count = (rows: { count: number }[]) =>
+      rows.reduce((sum, row) => sum + row.count, 0)
+
+    expect(count(runs)).toBeGreaterThan(0)
+    expect(count(runsDaily)).toBe(count(runs))
+    expect(runsDaily.every((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.day))).toBe(
+      true,
+    )
+  })
+
+  it('keeps run days as days when agent time is cut by hour', () => {
+    const data = db('owner')
+    const hourly = agents(data, { ...QUERY, bucket: 'hour' })
+
+    expect(
+      hourly.daily.every((row) => /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(row.day)),
+    ).toBe(true)
+    expect(hourly.runsDaily).toEqual(agents(data).runsDaily)
+  })
+
+  it('narrows agent time and runs to the agents asked for', () => {
+    const data = db('owner')
+    const scope = statisticsScope(data, data.meId, QUERY, NOW)
+    const all = agents(data)
+    const { agentId, userId, product } = all.daily[0]
+    const one = agents(data, { ...QUERY, agentIds: [agentId] })
+    // The agent's runs on the reader's projects that overlap the period.
+    const theirs = data.runs.filter(
+      (run) =>
+        run.userId === userId &&
+        run.product === product &&
+        scope.owners.has(run.projectId) &&
+        Date.parse(run.toAt) > scope.from &&
+        Date.parse(run.fromAt) < scope.to,
+    ).length
+    const count = (rows: { count: number }[]) =>
+      rows.reduce((sum, row) => sum + row.count, 0)
+
+    expect(one.daily).toEqual(
+      all.daily.filter((row) => row.agentId === agentId),
+    )
+    expect(theirs).toBeGreaterThan(0)
+    expect(theirs).toBeLessThan(count(all.runs))
+    expect(one.runs.every((row) => row.product === product)).toBe(true)
+    expect(count(one.runs)).toBe(theirs)
+    expect(count(one.runsDaily)).toBe(theirs)
+    expect(agents(data, { ...QUERY, agentIds: [] })).toEqual(all)
+    expect(agents(data, { ...QUERY, agentIds: ['nobody:none'] })).toEqual({
+      daily: [],
+      runs: [],
+      runsDaily: [],
+    })
+  })
+
+  it('leaves the team report as it is, whatever agents are asked for', () => {
+    const data = db('owner')
+    const { agentId } = agents(data).daily[0]
+
+    expect(
+      team(
+        statisticsScope(
+          data,
+          data.meId,
+          { ...QUERY, agentIds: [agentId] },
+          NOW,
+        ),
+      ),
+    ).toEqual(team(statisticsScope(data, data.meId, QUERY, NOW)))
   })
 })
 

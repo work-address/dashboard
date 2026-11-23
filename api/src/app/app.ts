@@ -2,6 +2,7 @@ import 'reflect-metadata'
 import { AgentController } from '@/controller/agent-controller'
 import { TeamController } from '@/controller/team-controller'
 import { StatisticsController } from '@/controller/statistics-controller'
+import { ReportController } from '@/controller/report-controller'
 import * as http from 'http'
 import * as Sentry from '@sentry/node'
 import express from 'express'
@@ -161,6 +162,7 @@ export class App {
         AgentController,
         TeamController,
         StatisticsController,
+        ReportController,
         ProjectController,
         AuthController,
         AuthTimeTrackerController,

@@ -3,6 +3,7 @@ import { ValidationError } from 'class-validator'
 import MobileTimeNotAllowedException from '@/exception/mobile-time-not-allowed-exception'
 import ProjectUnavailableException from '@/exception/project-unavailable-exception'
 import RetentionExceededException from '@/exception/retention-exceeded-exception'
+import SharedReportGoneException from '@/exception/shared-report-gone-exception'
 
 /** All a client learns of an error nobody meant it to read. */
 const UNEXPECTED = {
@@ -37,6 +38,7 @@ export class ErrorFormatter {
     name: string
     message: string
     errors?: unknown
+    reason?: string
   } {
     if (!ErrorFormatter.expected(error)) {
       return { ...UNEXPECTED }
@@ -50,9 +52,15 @@ export class ErrorFormatter {
       message: string
       name: string
       errors?: unknown[]
+      reason?: string
     } = {
       message: src.message || src.name,
       name: src.name || 'Error',
+    }
+
+    // Why a shared report's link shows nothing, for the page that says so.
+    if (error instanceof SharedReportGoneException) {
+      errorFormatted.reason = error.reason
     }
 
     if (src.errors && src.errors.length > 0) {

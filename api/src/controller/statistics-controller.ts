@@ -63,7 +63,7 @@ export class StatisticsController {
   @HttpCode(200)
   @OpenAPIExtended({
     summary:
-      'Agent time per day and product, assisted and autonomous, and run counts',
+      'Agent time per day, worker and agent, assisted and autonomous, and run counts over the period and by the day each started',
     body: { schema: StatisticsQueryDto },
   })
   agentsDaily(@Body() query: StatisticsQueryDto, @CurrentUser() user: User) {
