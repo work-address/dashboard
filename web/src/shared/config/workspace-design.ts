@@ -16,39 +16,77 @@ const space = {
   9: 64,
 } as const
 
-const blue = '#286bdf'
+/** The accent: the logo's steel blue. White text on it reads at 5.7:1. */
+const blue = '#3f67a4'
 
 export const workspaceDesign = {
+  // Grey-blue: a flat light-grey page, white cards, charcoal text and the
+  // accent above as the one colour.
   color: {
-    canvas: '#eaf2ff',
-    glow: '#d9e9ff',
+    canvas: '#f1f2f4',
+    glow: '#e6edf8',
     surface: '#fff',
     edge: '#fff',
-    inset: '#f2f6fc',
-    ink: '#183c69',
-    text: '#253b54',
-    muted: '#596d84',
+    inset: '#f3f4f6',
+    ink: '#23252b',
+    text: '#30333a',
+    muted: '#666a73',
     blue,
-    line: '#d9e5f6',
+    line: '#e6e7ea',
     /** Small control outlines (outline buttons, checkboxes) that a pale
         separator would leave unreadable. */
-    lineStrong: '#b6c8e2',
+    lineStrong: '#cbced4',
     chart: {
       1: blue,
-      2: '#6798e6',
-      3: '#abc9f6',
-      4: '#194c9d',
-      5: '#87b0ec',
-      6: '#3e7be0',
-      7: '#c6d9f5',
-      8: '#4374b5',
+      2: '#a4a7af',
+      3: '#1f3a68',
+      4: '#b9cbe6',
+      5: '#6f727b',
+      6: '#6d9be8',
+      7: '#383844',
+      8: '#dcdee2',
     },
-    chartOther: '#8c9fb9',
+    chartOther: '#b9bcc3',
     alpha: {
-      3: 'rgba(40, 107, 223, 0.05)',
-      4: 'rgba(40, 107, 223, 0.09)',
-      5: 'rgba(40, 107, 223, 0.12)',
-      6: 'rgba(40, 107, 223, 0.15)',
+      3: 'rgba(35, 37, 43, 0.04)',
+      4: 'rgba(35, 37, 43, 0.06)',
+      5: 'rgba(35, 37, 43, 0.09)',
+      6: 'rgba(35, 37, 43, 0.12)',
+    },
+    /** Radix's own scales, which its components read directly: indigo (the
+        accent) for ghost icon buttons, text selection and plain badges;
+        slate (the grey) for separators, plain badges and field outlines. */
+    radix: {
+      indigo: {
+        5: '#d5e0f2',
+        7: '#a9bfe0',
+        8: '#8fa9d3',
+        9: blue,
+        12: '#1f2d4a',
+        a2: 'rgba(63, 103, 164, 0.05)',
+        a3: 'rgba(63, 103, 164, 0.1)',
+        a4: 'rgba(63, 103, 164, 0.15)',
+        a5: 'rgba(63, 103, 164, 0.21)',
+        a6: 'rgba(63, 103, 164, 0.28)',
+        a11: '#34588f',
+        surface: 'rgba(242, 246, 252, 0.8)',
+      },
+      slate: {
+        1: '#fcfcfc',
+        5: '#e2e3e6',
+        7: '#cfd1d5',
+        8: '#bcbec4',
+        9: '#8d9097',
+        12: '#23252b',
+        a2: 'rgba(35, 37, 43, 0.03)',
+        a3: 'rgba(35, 37, 43, 0.06)',
+        a4: 'rgba(35, 37, 43, 0.09)',
+        a5: 'rgba(35, 37, 43, 0.12)',
+        a6: 'rgba(35, 37, 43, 0.15)',
+        a7: 'rgba(35, 37, 43, 0.2)',
+        a10: 'rgba(35, 37, 43, 0.5)',
+        a11: 'rgba(35, 37, 43, 0.62)',
+      },
     },
   },
   typography: {
@@ -91,7 +129,7 @@ export const workspaceDesign = {
   icon: { size: 20 },
   layer: { foreground: 1 },
   shadow:
-    '0 12px 28px rgba(68, 111, 167, 0.08), 0 2px 5px rgba(68, 111, 167, 0.05)',
+    '0 10px 24px rgba(35, 37, 43, 0.05), 0 1px 3px rgba(35, 37, 43, 0.04)',
   layout: {
     pageInset: space[7],
     pageInsetMobile: space[4],
@@ -283,3 +321,10 @@ export const workspaceCssTokens = {
   '--ui-popup-viewport-gutter': px(workspaceDesign.popup.viewportGutter),
   '--ui-transition': `${motion.hoverDuration}s ease`,
 } as const
+
+/** Radix's colour scales as the design sets them; see `color.radix`. */
+export const workspaceRadixTokens = Object.fromEntries(
+  Object.entries(color.radix).flatMap(([scale, steps]) =>
+    Object.entries(steps).map(([step, value]) => [`--${scale}-${step}`, value]),
+  ),
+)

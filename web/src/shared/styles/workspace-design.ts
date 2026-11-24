@@ -1,8 +1,12 @@
 import { createGlobalStyle } from 'styled-components'
 
-import { workspaceCssTokens } from '../config'
+import { workspaceCssTokens, workspaceRadixTokens } from '../config'
 
 const declarations = Object.entries(workspaceCssTokens)
+  .map(([name, value]) => `${name}: ${value};`)
+  .join('\n')
+
+const radixDeclarations = Object.entries(workspaceRadixTokens)
   .map(([name, value]) => `${name}: ${value};`)
   .join('\n')
 
@@ -22,8 +26,10 @@ export const WorkspaceDesignStyles = createGlobalStyle`
   }
 
   ${SCOPE} {
+    ${radixDeclarations}
+
     --default-font-family: var(--ui-font);
-    --page-canvas: radial-gradient(ellipse at 70% 0%, var(--ui-glow), var(--ui-canvas) 75%);
+    --page-canvas: var(--ui-canvas);
     --page-shadow: none;
     --sidebar-bg: var(--ui-canvas);
     --sidebar-border: var(--ui-line);
@@ -149,7 +155,7 @@ export const WorkspaceDesignStyles = createGlobalStyle`
     color: var(--ui-text);
   }
 
-  /* Paper is white: the canvas and its glow are for the screen. */
+  /* Paper is white: the canvas is for the screen. */
   @media print {
     ${SCOPE} {
       --page-canvas: var(--white);
