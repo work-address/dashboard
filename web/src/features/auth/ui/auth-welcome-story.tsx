@@ -37,10 +37,7 @@ export const AuthWelcomeStory = ({ className }: Props) => {
   return (
     <Root className={className}>
       <Eyebrow>{t('signIn.story.eyebrow')}</Eyebrow>
-      <Title>
-        <span>{t('signIn.story.titleLine1')}</span>{' '}
-        <span>{t('signIn.story.titleLine2')}</span>
-      </Title>
+      <Title>{t('signIn.story.title')}</Title>
       <Lead>{t('signIn.story.lead')}</Lead>
       <Example aria-label={t('signIn.story.example.label')}>
         <ExampleHead>
@@ -109,10 +106,8 @@ const Eyebrow = styled.p`
   text-transform: uppercase;
 `
 
-/* Two lines on a desktop, one on a phone. */
 const Title = styled.h2`
   margin: 0;
-  display: grid;
   color: var(--ui-ink);
   font-size: calc(var(--ui-title-size) * 1.3);
   line-height: 1.08;
@@ -121,7 +116,6 @@ const Title = styled.h2`
   text-wrap: balance;
 
   ${(p) => p.theme.breakpoints.down('lg')} {
-    display: block;
     font-size: var(--ui-metric-min-size);
     line-height: var(--ui-heading-line-height);
   }
