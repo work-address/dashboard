@@ -43,12 +43,7 @@ export const TeamServers = () => {
   // A server's runs: its agent's, which the setup bound to the server's id.
   const runsOf = (instanceId: string) => {
     const agent = agents?.find((item) => item.bindings?.includes(instanceId))
-    const query = new URLSearchParams({ mode: 'fixed' })
-    if (agent) {
-      query.set('agent', agent.id)
-    }
-
-    return `${routes.agents.build()}?${query}`
+    return routes.agents.build({ mode: 'fixed', agentId: agent?.id })
   }
 
   const healthText = (health: CollectorHealth) =>

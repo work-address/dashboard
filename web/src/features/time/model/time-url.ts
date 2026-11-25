@@ -12,18 +12,11 @@ import {
 
 import type { TimeFilters, TimeSort } from '@/entities/time'
 
+import { routes, type TimeAddress, type TimeRangeParam } from '@/routes'
+
 const DAY_FORMAT = 'yyyy-MM-dd'
 
-// The search rejects a project id that is not a UUID, which would turn a
-// mistyped link into a failed page instead of the unfiltered feed.
-const UUID = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i
-
-/**
- * URL parameter for each numeric filter.
- *
- * `from`, `to` and `projects` are left out: they are the names the dashboard
- * shares, so a link from a widget lands on the same entries.
- */
+/** The address's name for each numeric filter. */
 const RANGE_PARAMS = {
   timeActiveMin: 'activeMin',
   timeActiveMax: 'activeMax',
@@ -33,11 +26,11 @@ const RANGE_PARAMS = {
   mouseKeysMax: 'clicksMax',
   mouseDistanceMin: 'distanceMin',
   mouseDistanceMax: 'distanceMax',
-} as const satisfies Partial<Record<keyof TimeFilters, string>>
+} as const satisfies Partial<Record<keyof TimeFilters, TimeRangeParam>>
 
 type RangeFilter = keyof typeof RANGE_PARAMS
 
-const readDay = (value: string | null) => {
+const readDay = (value?: string) => {
   if (!value) {
     return
   }
@@ -49,34 +42,20 @@ const readDay = (value: string | null) => {
   return isValid(date) ? date.getTime() : undefined
 }
 
-const readNumber = (value: string | null) => {
-  if (value == null || value.trim() === '') {
-    return
-  }
-
-  const parsed = Number(value)
-
-  return Number.isFinite(parsed) ? parsed : undefined
-}
-
-const isSortField = (value: string | null): value is TimeSortField =>
+const isSortField = (value?: string): value is TimeSortField =>
   TIME_SORT_FIELDS.some((entry) => entry.field === value)
 
 /**
- * The worklog filters and sort a URL describes. Anything unknown or malformed
- * is dropped rather than failing the page.
+ * The worklog filters and sort an address describes. Anything unknown or
+ * malformed is dropped rather than failing the page.
  */
-export const parseTimeSearch = (
-  search: URLSearchParams,
+export const fromTimeAddress = (
+  address: TimeAddress,
 ): { filters: Partial<TimeFilters>; sort: TimeSort } => {
   const filters: Partial<TimeFilters> = {}
 
-  const fromAt = readDay(search.get('from'))
-  const toAt = readDay(search.get('to'))
-  // The worklogs filter one project; the dashboard's list form is accepted so
-  // its links still open, narrowed to the first.
-  const project = search.get('projects')?.split(',')[0]?.trim()
-  const note = search.get('note')?.trim()
+  const fromAt = readDay(address.from)
+  const toAt = readDay(address.to)
 
   if (fromAt != null) {
     filters.fromAt = fromAt
@@ -84,57 +63,60 @@ export const parseTimeSearch = (
   if (toAt != null) {
     filters.toAt = toAt
   }
-  if (project && UUID.test(project)) {
-    filters.activityId = project
+  if (address.projectId) {
+    filters.activityId = address.projectId
   }
-  if (note) {
-    filters.note = note
+  if (address.note) {
+    filters.note = address.note
   }
 
   for (const key of Object.keys(RANGE_PARAMS) as RangeFilter[]) {
-    const value = readNumber(search.get(RANGE_PARAMS[key]))
+    const value = address[RANGE_PARAMS[key]]
 
     if (value != null) {
       filters[key] = value
     }
   }
 
-  const field = search.get('sort')
-  const order = search.get('order')?.toUpperCase()
-
+  const order = address.order?.toUpperCase()
   const sort = toTimeSort(
-    isSortField(field) ? field : DEFAULT_TIME_SORT_FIELD,
+    isSortField(address.sort) ? address.sort : DEFAULT_TIME_SORT_FIELD,
     order === 'ASC' || order === 'DESC' ? order : DEFAULT_TIME_SORT_ORDER,
   )
 
   return { filters, sort }
 }
 
-/** The URL for a set of filters and a sort; defaults are left out. */
-export const toTimeSearch = (
+/** The address for a set of filters and a sort; defaults are left out. */
+export const toTimeAddress = (
   filters: Partial<TimeFilters>,
   sort: TimeSort,
-): URLSearchParams => {
-  const search = new URLSearchParams()
+): TimeAddress => {
+  const address: TimeAddress = {}
 
   if (filters.fromAt != null) {
-    search.set('from', format(filters.fromAt, DAY_FORMAT))
+    address.from = format(filters.fromAt, DAY_FORMAT)
   }
   if (filters.toAt != null) {
-    search.set('to', format(filters.toAt, DAY_FORMAT))
+    address.to = format(filters.toAt, DAY_FORMAT)
   }
   if (filters.activityId) {
-    search.set('projects', filters.activityId)
+    address.projectId = filters.activityId
   }
   if (filters.note) {
-    search.set('note', filters.note)
+    address.note = filters.note
   }
 
   for (const key of Object.keys(RANGE_PARAMS) as RangeFilter[]) {
     const value = filters[key]
 
+    // A field typed into still holds a string until it is applied.
     if (value != null && String(value) !== '') {
-      search.set(RANGE_PARAMS[key], String(value))
+      const parsed = Number(value)
+
+      if (Number.isFinite(parsed)) {
+        address[RANGE_PARAMS[key]] = parsed
+      }
     }
   }
 
@@ -142,9 +124,17 @@ export const toTimeSearch = (
   const order = getTimeSortOrder(sort)
 
   if (field !== DEFAULT_TIME_SORT_FIELD || order !== DEFAULT_TIME_SORT_ORDER) {
-    search.set('sort', field)
-    search.set('order', order.toLowerCase())
+    address.sort = field
+    address.order = order === 'ASC' ? 'asc' : 'desc'
   }
 
-  return search
+  return address
 }
+
+export const parseTimeSearch = (search: URLSearchParams) =>
+  fromTimeAddress(routes.time.read(search))
+
+export const toTimeSearch = (
+  filters: Partial<TimeFilters>,
+  sort: TimeSort,
+): URLSearchParams => routes.time.write(toTimeAddress(filters, sort))

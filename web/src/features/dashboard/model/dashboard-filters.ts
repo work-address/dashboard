@@ -25,6 +25,7 @@ import {
   recentTimeQuery,
   type RecentTimeParams,
 } from '@/entities/time'
+import { routes, type DashboardAddress } from '@/routes'
 import {
   askGrain,
   DEFAULT_DATE_RANGE_PRESET,
@@ -50,49 +51,39 @@ export type DashboardFilters = {
 
 export type DashboardPerson = { id: string; name: string }
 
-const UUID = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i
-
-const readIds = (value: string | null) =>
-  [
-    ...new Set(
-      (value ?? '')
-        .split(',')
-        .map((id) => id.trim())
-        .filter((id) => UUID.test(id)),
-    ),
-  ].slice(0, 100)
-
-/** Filters from the dashboard's URL; anything unusable falls back to all. */
+/** Filters from the dashboard's address; anything unusable falls back to all. */
 export const parseDashboardSearch = (
   search: URLSearchParams,
   now = new Date(),
-): DashboardFilters => ({
-  range: parseDateRange(
-    search.get('from'),
-    search.get('to'),
-    now,
-    weekStartsOnFor(i18n.language),
-  ),
-  projectIds: readIds(search.get('projects')),
-  userIds: readIds(search.get('people')),
+): DashboardFilters => {
+  const address = routes.dashboard.read(search)
+
+  return {
+    range: parseDateRange(
+      address.from ?? null,
+      address.to ?? null,
+      now,
+      weekStartsOnFor(i18n.language),
+    ),
+    projectIds: address.projectIds ?? [],
+    userIds: address.userIds ?? [],
+  }
+}
+
+/** The dashboard's address for its filters. */
+export const toDashboardAddress = ({
+  range,
+  projectIds,
+  userIds,
+}: DashboardFilters): DashboardAddress => ({
+  from: range.from,
+  to: range.to,
+  projectIds,
+  userIds,
 })
 
-/** The same parameter names as /time, so a widget can link there. */
-export const toDashboardSearch = (filters: DashboardFilters) => {
-  const search = new URLSearchParams({
-    from: filters.range.from,
-    to: filters.range.to,
-  })
-
-  if (filters.projectIds.length > 0) {
-    search.set('projects', filters.projectIds.join(','))
-  }
-  if (filters.userIds.length > 0) {
-    search.set('people', filters.userIds.join(','))
-  }
-
-  return search
-}
+export const toDashboardSearch = (filters: DashboardFilters) =>
+  routes.dashboard.write(toDashboardAddress(filters))
 
 export const dashboardFiltersRestored = createEvent<DashboardFilters>()
 export const dashboardRangeChanged = createEvent<DateRange>()

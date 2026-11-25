@@ -48,3 +48,15 @@ export type MappingRoute = Route<
   key: string
   children?: MappingRoute
 }
+
+/**
+ * A page that keeps its filters in its address: it reads them from the search
+ * and writes them back, and `build` takes the same shape, so a link into the
+ * page is typed by what the page reads.
+ */
+export type Addressed<Name extends string, Address> = {
+  [key in Name]: {
+    read: (search: URLSearchParams) => Address
+    write: (address?: Address) => URLSearchParams
+  }
+}

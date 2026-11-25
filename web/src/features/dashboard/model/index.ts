@@ -32,6 +32,7 @@ export {
   dashboardRangeChanged,
   dashboardStatisticsRequested,
   parseDashboardSearch,
+  toDashboardAddress,
   toDashboardSearch,
 } from './dashboard-filters'
 export type { DashboardFilters, DashboardPerson } from './dashboard-filters'

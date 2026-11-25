@@ -2,6 +2,7 @@ import { addDays, subDays } from 'date-fns'
 
 import type { TimeAgentRun } from '@/entities/time'
 
+import { routes, type AgentRunMode, type AgentsAddress } from '@/routes'
 import { fromDay, toDay } from '@/shared'
 
 /** A run as the Agents page reads it: everything the search returns. */
@@ -27,8 +28,6 @@ export type AgentRun = TimeAgentRun & {
   manual?: boolean
 }
 
-export type AgentRunMode = 'timer' | 'fixed'
-
 /** What the page shows, as its address says it: every field is optional there. */
 export type AgentRunFilters = {
   /** Calendar days in the reader's timezone, both ends included. */
@@ -51,60 +50,30 @@ export const defaultAgentRunDays = (now = new Date()) => ({
   to: toDay(now),
 })
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/
-
 /** The page's filters from its address; missing or malformed days fall back to the last week. */
-export const readAgentRunFilters = (
-  params: URLSearchParams,
+export const fromAgentsAddress = (
+  address: AgentsAddress,
   now = new Date(),
 ): AgentRunFilters => {
-  const fallback = defaultAgentRunDays(now)
-  const from = params.get('from') ?? ''
-  const to = params.get('to') ?? ''
+  const { from, to } = address
   const days =
-    DAY.test(from) && DAY.test(to) && from <= to ? { from, to } : fallback
-  const mode = params.get('mode')
+    from && to && from <= to ? { from, to } : defaultAgentRunDays(now)
 
   return {
     ...days,
-    projectId: params.get('project') || undefined,
-    userId: params.get('person') || undefined,
-    agentId: params.get('agent') || undefined,
-    mode: mode === 'timer' || mode === 'fixed' ? mode : undefined,
-    status: params.get('status') || undefined,
-    sessionId: params.get('session') || undefined,
+    projectId: address.projectId,
+    userId: address.userId,
+    agentId: address.agentId,
+    mode: address.mode,
+    status: address.status,
+    sessionId: address.sessionId,
   }
 }
 
-const PARAM_NAMES: Record<keyof AgentRunFilters, string> = {
-  from: 'from',
-  to: 'to',
-  projectId: 'project',
-  userId: 'person',
-  agentId: 'agent',
-  mode: 'mode',
-  status: 'status',
-  sessionId: 'session',
-}
-
-/** The address for a set of filters, and a run to open when given. */
-export const agentRunsSearch = (
-  filters: Partial<AgentRunFilters>,
-  runKey?: string,
-): string => {
-  const params = new URLSearchParams()
-  for (const [key, name] of Object.entries(PARAM_NAMES)) {
-    const value = filters[key as keyof AgentRunFilters]
-    if (value) {
-      params.set(name, value)
-    }
-  }
-  if (runKey) {
-    params.set('run', runKey)
-  }
-
-  return params.toString()
-}
+export const readAgentRunFilters = (
+  params: URLSearchParams,
+  now = new Date(),
+) => fromAgentsAddress(routes.agents.read(params), now)
 
 /** The search's body for the filters: the days as instants, from local midnights. */
 export const agentRunsBody = (filters: AgentRunFilters) => ({
@@ -121,3 +90,5 @@ export const agentRunsBody = (filters: AgentRunFilters) => ({
 /** Where a run ran, as its badge says it; an older run without a mode is a computer's. */
 export const agentRunMode = (run: AgentRun): AgentRunMode =>
   run.measurement?.mode === 'fixed' ? 'fixed' : 'timer'
+
+export { type AgentRunMode } from '@/routes'
