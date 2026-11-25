@@ -4,12 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { NavLink, useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
 
-import {
-  canSettleInvoice,
-  invoiceRateHour,
-  invoiceStateLabelKey,
-  invoiceStateTone,
-} from '../lib'
+import { invoiceRateHour, invoiceStateLabelKey, invoiceStateTone } from '../lib'
 import {
   $invoiceSort,
   formatCents,
@@ -25,6 +20,7 @@ import type {
   DesktopBodyCellRenderProps,
 } from '@/shared'
 
+import { invoiceAccess } from '@/entities/access'
 import { $user } from '@/entities/profile'
 import { routes } from '@/routes'
 import {
@@ -225,7 +221,7 @@ const InvoiceActionCell = ({ invoice }: { invoice: InvoiceRow }) => {
       <InvoicePaymentActions
         invoiceId={invoice.id as string}
         isPaid={invoice.state === 'PAID'}
-        canSettle={canSettleInvoice(invoice, user)}
+        canSettle={invoiceAccess(invoice, user).settle}
       />
     </div>
   )

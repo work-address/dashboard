@@ -8,11 +8,8 @@ import {
   dashboardStatisticsRequested,
 } from '../../model/dashboard-filters'
 
-import {
-  $hasProjects,
-  $projectsLoading,
-  type ProjectRole,
-} from '@/entities/projects'
+import { projectAccess } from '@/entities/access'
+import { $hasProjects, $projectsLoading } from '@/entities/projects'
 import {
   statisticsAgentsQuery,
   statisticsOverviewQuery,
@@ -45,7 +42,7 @@ type Totals = {
  */
 const sumTotals = (
   rows: StatisticsTotalsRow[] | null,
-  roles: Map<string | undefined, ProjectRole>,
+  amounts: Map<string | undefined, boolean>,
 ): Totals => {
   const acc: Totals = {
     minutes: 0,
@@ -59,7 +56,7 @@ const sumTotals = (
   for (const row of rows ?? []) {
     acc.minutes += row.trackedSeconds / 60
 
-    if (roles.get(row.projectId) === 'viewer') {
+    if (amounts.get(row.projectId) === false) {
       continue
     }
 
@@ -103,14 +100,17 @@ export const DashboardSummary = () => {
     hasProjects: $hasProjects,
   })
 
-  const roles = useMemo(
-    () => new Map(projects.map((project) => [project.id, project.role])),
+  const amounts = useMemo(
+    () =>
+      new Map(
+        projects.map((project) => [project.id, projectAccess(project).amounts]),
+      ),
     [projects],
   )
-  const totals = useMemo(() => sumTotals(rows, roles), [rows, roles])
+  const totals = useMemo(() => sumTotals(rows, amounts), [rows, amounts])
   const previous = useMemo(
-    () => (previousRows ? sumTotals(previousRows, roles) : null),
-    [previousRows, roles],
+    () => (previousRows ? sumTotals(previousRows, amounts) : null),
+    [previousRows, amounts],
   )
 
   const agentTotals = useMemo(

@@ -2,6 +2,7 @@ import { useUnit } from 'effector-react'
 import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
+import { projectsAccess } from '@/entities/access'
 import { $projects } from '@/entities/projects'
 import { $hasActiveTimeFilters, resetTimeFilters } from '@/entities/time'
 import { routes } from '@/routes'
@@ -21,9 +22,7 @@ export const TimeWorklogsEmpty = () => {
   })
   // Entries are listed only on projects one owns or works on; someone who
   // only views projects sees their totals above and never a row here.
-  const viewsOnly =
-    projects.length > 0 &&
-    projects.every((project) => project.role === 'viewer')
+  const { viewsOnly } = projectsAccess(projects)
 
   return (
     <Root>

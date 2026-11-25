@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Navigate } from 'react-router-dom'
 import styled from 'styled-components'
 
+import { projectAccess } from '@/entities/access'
 import { fetchProjects } from '@/entities/projects'
 import { ProjectsPeopleDialog } from '@/features/projects'
 import {
@@ -74,7 +75,7 @@ export default function TeamPage() {
             key={project.id}
             project={project}
             actions={
-              project.role === 'owner' ? (
+              projectAccess(project).manage ? (
                 <ProjectsPeopleDialog projectId={project.id} />
               ) : undefined
             }

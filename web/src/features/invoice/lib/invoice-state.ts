@@ -1,6 +1,7 @@
 /**
- * One place for what an invoice's state means on screen and who may act on it,
- * so the page, the two badge layouts and the list cannot drift apart.
+ * One place for what an invoice's state means on screen, so the page, the two
+ * badge layouts and the list cannot drift apart. Who may act on it is Access:
+ * `invoiceAccess` in `@/entities/access`.
  */
 export type InvoiceStateLike = { state?: string | null } | null | undefined
 
@@ -30,24 +31,6 @@ export const invoiceStateTone = (
     : invoice?.state === 'REJECTED'
       ? 'critical'
       : 'attention'
-
-type SettleableInvoice = {
-  state?: string | null
-  user?: { id?: string | null } | null
-}
-type Viewer = { id?: string | null } | null | undefined
-
-/**
- * Only the issuer may settle: the person owed the money is the one who knows
- * whether it arrived. A rejected invoice is closed, so nobody settles it.
- */
-export const canSettleInvoice = (
-  invoice: SettleableInvoice | null | undefined,
-  user: Viewer,
-): boolean =>
-  Boolean(
-    user?.id && invoice?.user?.id === user.id && invoice.state !== 'REJECTED',
-  )
 
 type RatedInvoice = {
   lines?: Array<{ rateHourCents?: number | null }> | null

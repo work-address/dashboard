@@ -13,6 +13,7 @@ import type { ProjectSort } from '../../model'
 import type { ProjectWithStats } from '@/entities/projects'
 import type { ReactNode } from 'react'
 
+import { projectsAccess } from '@/entities/access'
 import { usePageBusy, workspaceDesign } from '@/shared'
 
 type Props = {
@@ -37,8 +38,7 @@ export const ProjectsOverviewTable = ({
 }: Props) => {
   const { t } = useTranslation()
   usePageBusy(isFiltering)
-  const showDetail =
-    loading || projects.some((project) => project.role !== 'viewer')
+  const showDetail = loading || projectsAccess(projects).amounts
   const changeSort = (field: 'title' | 'timeTotal') =>
     onSortChange({ [field]: sort[field] === 'ASC' ? 'DESC' : 'ASC' })
   const sortIcon = (field: 'title' | 'timeTotal') => {

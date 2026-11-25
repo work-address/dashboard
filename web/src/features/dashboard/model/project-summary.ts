@@ -5,6 +5,8 @@ import type {
   StatisticsTotalsRow,
 } from '@/entities/statistics'
 
+import { projectAccess } from '@/entities/access'
+
 type Person = { id?: string; name?: string; address?: string }
 
 /** The project fields the summary reads that the generated type leaves loose. */
@@ -74,7 +76,7 @@ export function projectSummary(
   daily: StatisticsDailyRow[],
 ): ProjectSummary {
   const workers = project.workers ?? []
-  const detail = project.role !== 'viewer'
+  const detail = projectAccess(project).amounts
   const tracked = (totals?.trackedSeconds ?? 0) / 60
   const active = detail ? (totals?.activeSeconds ?? 0) / 60 : null
   const shown = (value: number | undefined) => (detail ? (value ?? 0) : null)

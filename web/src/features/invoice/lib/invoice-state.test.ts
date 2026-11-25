@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  canSettleInvoice,
   invoiceRateHour,
   invoiceStateColor,
   invoiceStateLabelKey,
@@ -27,18 +26,6 @@ describe('invoice state helpers', () => {
     expect(invoiceStateTone({ state: 'REJECTED' })).toBe('critical')
     expect(invoiceStateTone({ state: 'Requested' })).toBe('attention')
     expect(invoiceStateTone(null)).toBe('attention')
-  })
-  it('lets only the issuer settle, and never a rejected invoice', () => {
-    const invoice = { state: 'Requested', user: { id: 'worker' } }
-    expect(canSettleInvoice(invoice, { id: 'worker' })).toBe(true)
-    expect(canSettleInvoice(invoice, { id: 'owner' })).toBe(false)
-    expect(canSettleInvoice(invoice, null)).toBe(false)
-    expect(
-      canSettleInvoice({ ...invoice, state: 'REJECTED' }, { id: 'worker' }),
-    ).toBe(false)
-    expect(
-      canSettleInvoice({ ...invoice, state: 'PAID' }, { id: 'worker' }),
-    ).toBe(true)
   })
   it('prints one line rate, the project rate for legacy invoices, else none', () => {
     expect(invoiceRateHour({ lines: [{ rateHourCents: 1250 }] })).toBe(12.5)

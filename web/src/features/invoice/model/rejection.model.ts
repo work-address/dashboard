@@ -11,16 +11,15 @@ import {
 import { invoiceListQuery, invoiceQuery, invoiceSummaryQuery } from './queries'
 import { $invoice } from './stores'
 
+import { invoiceAccess } from '@/entities/access'
 import { $user } from '@/entities/profile'
 import { baseApi, runApiData } from '@/shared'
 
 export const invoiceRejectionRequested = createEvent<string>()
-export const $invoiceCanReject = combine($invoice, $user, (invoice, user) =>
-  Boolean(
-    user?.id &&
-      invoice?.project?.user?.id === user.id &&
-      invoice.state === 'Requested',
-  ),
+export const $invoiceCanReject = combine(
+  $invoice,
+  $user,
+  (invoice, user) => invoiceAccess(invoice, user).reject,
 )
 export const rejectInvoiceMutation = createMutation({
   handler: ({ id, reason }: { id: string; reason: string }) =>

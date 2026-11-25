@@ -4,6 +4,7 @@ import i18n from 'i18next'
 
 import type { OwnAgent, Team } from './types'
 
+import { readerAccess } from '@/entities/access'
 import { signOut } from '@/entities/profile'
 import { editProjectMutation } from '@/entities/projects'
 import { baseApi, runApi, runApiData, showToast } from '@/shared'
@@ -44,8 +45,17 @@ export const setAgentRateMutation = createMutation({
     ),
 })
 
-/** Everyone but a person who is only ever a viewer. True until it is known. */
-export const $canSeeTeam = teamQuery.$data.map((team) => !team?.viewerOnly)
+/**
+ * Everyone but a person who is only ever a viewer. True until it is known.
+ * The team carries the reader's roles: those on the projects they work on, or
+ * `viewerOnly` when they have none but views.
+ */
+export const $canSeeTeam = teamQuery.$data.map(
+  (team) =>
+    !readerAccess(
+      team?.viewerOnly ? ['viewer'] : (team?.projects ?? []).map((p) => p.role),
+    ).viewsOnly,
+)
 
 export const $teamLoading = combine(
   teamQuery.$data,
