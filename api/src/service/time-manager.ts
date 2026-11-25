@@ -4,8 +4,7 @@ import { inject, injectable } from 'inversify'
 import moment from 'moment'
 
 import { Time } from '@/entity/time'
-import { AppUsagePolicy } from '@/service/app-usage-policy'
-import { LocationPolicy, NO_LOCATION } from '@/service/location-policy'
+import { EntryUpload } from '@/service/entry-upload'
 import { User } from '@/entity/user'
 import { TimeRepository } from '@/repository/time-repository'
 import { ProjectRepository } from '@/repository/project-repository'
@@ -71,7 +70,6 @@ export class TimeManager {
       ): Effect.Effect<ITimeInsertionResult, unknown> =>
         Effect.gen(this, function* () {
           const fromAt = moment(item.fromAt).toDate()
-          const toAt = moment(item.toAt).toDate()
 
           const project =
             yield* this.projectRepository.findProjectForTimeTracking(
@@ -114,72 +112,25 @@ export class TimeManager {
             return yield* Effect.fail(new MobileTimeNotAllowedException())
           }
 
-          const existing = yield* this.timeRepository.findTimeSingleForProject(
-            project,
-            fromAt,
-            toAt,
-            user,
-          )
-
-          if (existing && existing.user?.id !== user.id) {
-            return yield* Effect.fail(
-              new AccessException(
-                `Wrong user: the given time belongs to someone else`,
-              ),
-            )
-          }
-
-          const time = existing ?? new Time()
-
-          if (!existing) {
-            time.user = user
-          }
-
-          time.source = mobile ? 'mobile' : 'desktop'
-          time.fromAt = fromAt
-          time.toAt = toAt
-          time.note = item.note
-          time.minutesActive = item.minutesActive
-          // A phone captures no input, screenshots or apps.
-          time.keyboardKeys = mobile ? 0 : item.keyboardKeys
-          time.mouseKeys = mobile ? 0 : item.mouseKeys
-          time.mouseDistance = mobile ? 0 : item.mouseDistance
-          time.project = project
-          time.screenshot = yield* fromPromise(() =>
-            this.resize(
-              project.trackScreenshots && !mobile ? item.screenshot : undefined,
+          // Resized before the slice is locked, so no image work holds the lock.
+          const read = EntryUpload.read(item, project)
+          const slice = {
+            ...read,
+            screenshot: yield* fromPromise(() =>
+              this.resize(read.screenshot ?? undefined),
             ),
-          )
-          time.processes =
-            project.trackProcesses && !mobile ? item.processes : null
-
-          const usage = mobile
-            ? AppUsagePolicy.fromPhone(project)
-            : AppUsagePolicy.normalize(item, project)
-          // Only a phone records location, and only where the owner asks.
-          const location = mobile
-            ? LocationPolicy.normalize(item, project)
-            : NO_LOCATION
-          const savedTime = yield* this.timeRepository.saveWithUsage(
-            time,
-            usage,
-            location,
-          )
-
-          return {
-            ...item,
-            id: savedTime.id,
-            appsAccepted:
-              savedTime.appsStatus !== null &&
-              savedTime.appsStatus !== undefined,
-            ...(mobile && {
-              locationsAccepted: savedTime.locationStatus === 'ok',
-            }),
-            apps: undefined,
-            screenshot: undefined,
-            processes: undefined,
-            locations: undefined,
           }
+          const { saved, row } = yield* this.timeRepository.storeUpload(
+            { project, author: user, fromAt: slice.fromAt },
+            (existing) =>
+              EntryUpload.decide(slice, existing, {
+                project,
+                author: user,
+                now,
+              }),
+          )
+
+          return { ...row, id: saved.id }
         })
 
       const program = Effect.gen(this, function* () {

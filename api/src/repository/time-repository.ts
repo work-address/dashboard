@@ -11,8 +11,7 @@ import { fromPromise } from '@/service/effect-bridge'
 import { Time } from '@/entity/time'
 import { AppUsage } from '@/entity/app-usage'
 import { TimeLocation } from '@/entity/time-location'
-import { UsageResult } from '@/service/app-usage-policy'
-import { LocationResult, NO_LOCATION } from '@/service/location-policy'
+import { EntryUploadOutcome, EntryUploadRow } from '@/service/entry-upload'
 import { ProjectAccess } from '@/service/project-access'
 import { validate } from 'class-validator'
 import ConstraintsValidationException from '@/exception/constraints-validation-exception'
@@ -33,7 +32,6 @@ import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity
 import AccessException from '@/exception/access-exception'
 import InvoicedTimeException from '@/exception/invoiced-time-exception'
 import { TimeSearchDto } from '@/model/dto/time'
-import { BadRequestError } from 'routing-controllers'
 
 /** Every order the entry list can ask for, by the name it asks with. */
 const TIME_SORT_COLUMN_BY_KEY = new Map([
@@ -100,18 +98,23 @@ export class TimeRepository extends AbstractRepositoryTemplate<Time> {
     })
   }
 
-  public saveWithUsage(
-    time: Time,
-    usage: UsageResult,
-    location: LocationResult = NO_LOCATION,
-  ): RepoEffect<Time> {
+  /**
+   * Stores one upload of a slice: locks the author's slice, loads what is
+   * stored for it, and saves what `decide` makes of that. `decide` is
+   * `EntryUpload.decide`, which alone says what an upload may change; a
+   * refusal is thrown and nothing is written.
+   */
+  public storeUpload(
+    slot: { project: Project; author: User; fromAt: Date },
+    decide: (existing: Time | undefined) => EntryUploadOutcome,
+  ): RepoEffect<{ saved: Time; row: EntryUploadRow }> {
+    const { project, author, fromAt } = slot
+
     return fromPromise(() =>
       this.getRepo().manager.transaction(async (manager) => {
         await manager.query(
           'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-          [
-            `time:${time.project.id}:${time.user.id}:${time.fromAt.toISOString()}`,
-          ],
+          [`time:${project.id}:${author.id}:${fromAt.toISOString()}`],
         )
         const existing = await manager
           .getRepository(Time)
@@ -120,73 +123,35 @@ export class TimeRepository extends AbstractRepositoryTemplate<Time> {
           .leftJoinAndSelect('time.invoice', 'invoice')
           .where(
             'time.projectId=:project AND time.userId=:user AND time.fromAt=:from',
-            { project: time.project.id, user: time.user.id, from: time.fromAt },
+            { project: project.id, user: author.id, from: fromAt },
           )
           .setLock('pessimistic_write', undefined, ['time'])
           .getOne()
-        const preserveUsage = existing && this.access.published(existing)
-        if (
-          preserveUsage &&
-          (+time.toAt !== +existing.toAt ||
-            time.minutesActive !== existing.minutesActive)
-        )
-          throw new BadRequestError(
-            'Published time accounting cannot be changed by an upload',
-          )
-        if (existing) {
-          time.id = existing.id
-          time.invoice = existing.invoice
-          time.publishedAt = existing.publishedAt
-          time.isPaid = existing.isPaid
-        }
-        if (preserveUsage) {
-          // Evidence never changes once the owner can see it: a desktop retry
-          // must not restore a removed screenshot, rewrite input counts, or put
-          // back a note its author has since corrected.
-          time.note = existing.note
-          // Which part of an invoice the time is billed in stays as published.
-          time.source = existing.source
-          time.screenshot = existing.screenshot
-          time.processes = existing.processes
-          time.keyboardKeys = existing.keyboardKeys
-          time.mouseKeys = existing.mouseKeys
-          time.mouseDistance = existing.mouseDistance
-        }
-        time.appsStatus = usage.status
-        time.appsReason = usage.reason
-        time.appsTruncated = usage.truncated
-        if (preserveUsage) {
-          time.appsStatus = existing.appsStatus
-          time.appsReason = existing.appsReason
-          time.appsTruncated = existing.appsTruncated
-        }
-        // Location its author removed stays removed, published or not: the
-        // phone may send the same slice again until it hears back.
-        const keepLocation =
-          preserveUsage || existing?.locationStatus === 'removed'
-        time.locationStatus =
-          keepLocation && existing ? existing.locationStatus : location.status
-        const errors = await validate(time)
+        const outcome = decide(existing ?? undefined)
+        if ('refused' in outcome) throw outcome.refused
+        const { entry, usage, locations, row } = outcome
+        const errors = await validate(entry)
         if (errors.length) throw new ConstraintsValidationException(errors)
-        const saved = await manager.save(Time, time)
-        if (!keepLocation) {
+        const saved = await manager.save(Time, entry)
+        if (locations) {
           await manager.delete(TimeLocation, { time: { id: saved.id } })
-          if (location.rows.length)
+          if (locations.length)
             await manager.insert(
               TimeLocation,
-              location.rows.map((row) => ({ ...row, time: saved })),
+              locations.map((point) => ({ ...point, time: saved })),
             )
         }
-        if (preserveUsage) return saved
-        await manager.delete(AppUsage, { time: { id: saved.id } })
-        if (usage.rows.length)
-          await manager.save(
-            AppUsage,
-            usage.rows.map((row) =>
-              manager.create(AppUsage, { ...row, time: saved }),
-            ),
-          )
-        return saved
+        if (usage) {
+          await manager.delete(AppUsage, { time: { id: saved.id } })
+          if (usage.length)
+            await manager.save(
+              AppUsage,
+              usage.map((usageRow) =>
+                manager.create(AppUsage, { ...usageRow, time: saved }),
+              ),
+            )
+        }
+        return { saved, row }
       }),
     )
   }
@@ -799,29 +764,6 @@ export class TimeRepository extends AbstractRepositoryTemplate<Time> {
         .andWhere(`NOT ${this.invoicedSql()}`)
         .execute()
     })
-  }
-
-  public findTimeSingleForProject(
-    project: Project,
-    from: Date,
-    to: Date,
-    author?: User,
-  ): RepoEffect<Time | undefined> {
-    return fromPromise(() =>
-      this.getRepo()
-        .createQueryBuilder('time')
-        .innerJoinAndSelect('time.project', 'project')
-        .innerJoinAndSelect('time.user', 'user')
-        .andWhere('project.id = :projectId', { projectId: project.id })
-        .andWhere('time.fromAt = :from', { from })
-        .andWhere(
-          author ? 'user.id = :authorId' : 'time.toAt = :to',
-          author ? { authorId: author.id } : { to },
-        )
-        .leftJoinAndSelect('time.invoice', 'invoice')
-        .getOne()
-        .then((result) => result ?? undefined),
-    )
   }
 
   /**

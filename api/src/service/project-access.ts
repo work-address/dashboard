@@ -113,17 +113,35 @@ export class ProjectAccess {
     reviewWindowHours: number | null | undefined,
     now = Date.now(),
   ): boolean {
+    return ProjectAccess.reviewEnded(toAt, reviewWindowHours, now)
+  }
+
+  /** Whether an entry's detail has reached its owner. */
+  public published(time: Time, now = Date.now()): boolean {
+    return ProjectAccess.published(time, now)
+  }
+
+  /** `reviewEnded`, for a caller with no container: it reads nothing injected. */
+  public static reviewEnded(
+    toAt: Date,
+    reviewWindowHours: number | null | undefined,
+    now: number,
+  ): boolean {
     const hours = reviewWindowHours ?? DEFAULT_REVIEW_WINDOW_HOURS
 
     return new Date(toAt).getTime() + hours * 3600_000 <= now
   }
 
-  /** Whether an entry's detail has reached its owner. */
-  public published(time: Time, now = Date.now()): boolean {
+  /** `published`, for a caller with no container, such as `EntryUpload`. */
+  public static published(time: Time, now: number): boolean {
     return Boolean(
       time.publishedAt ||
         time.invoiceId ||
-        this.reviewEnded(time.toAt, time.project?.reviewWindowHours, now),
+        ProjectAccess.reviewEnded(
+          time.toAt,
+          time.project?.reviewWindowHours,
+          now,
+        ),
     )
   }
 
