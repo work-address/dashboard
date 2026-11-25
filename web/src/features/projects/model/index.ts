@@ -18,7 +18,6 @@ export {
   type ProjectSortField,
 } from './projects-sort'
 export {
-  $canDeleteAllProjects,
   $projectSort,
   projectSortChanged,
   $isProjectCreateDialogOpen,

@@ -1,4 +1,4 @@
-import { TrashIcon, PlusIcon } from '@radix-ui/react-icons'
+import { PlusIcon } from '@radix-ui/react-icons'
 import { Flex } from '@radix-ui/themes'
 import { useUnit } from 'effector-react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next'
 import styled from 'styled-components'
 
 import {
-  $canDeleteAllProjects,
   $isProjectCreateDialogOpen,
   $isProjectDialogOpen,
   $projectSelection,
@@ -125,7 +124,6 @@ export const ProjectsTable = ({
     setProjectDialogOpen,
     isCreateDialogOpen,
     setCreateDialogOpen,
-    allowDeleteAll,
     sort,
     changeSort,
   } = useUnit({
@@ -144,7 +142,6 @@ export const ProjectsTable = ({
     setProjectDialogOpen: projectDialogOpenChanged,
     isCreateDialogOpen: $isProjectCreateDialogOpen,
     setCreateDialogOpen: projectCreateDialogOpenChanged,
-    allowDeleteAll: $canDeleteAllProjects,
     sort: $projectSort,
     changeSort: projectSortChanged,
   })
@@ -379,50 +376,26 @@ export const ProjectsTable = ({
             )}
           </Tools>
         )}
-        {(allowDeleteAll || showCreateAction) && (
+        {showCreateAction && (
           <Actions>
-            {allowDeleteAll && (
-              <>
-                {isMobile ? (
-                  <Tooltip content={t('dashboard.page.deleteAll')}>
-                    <ActionIcon
-                      variant={'outline'}
-                      color={'red'}
-                      aria-label={t('dashboard.page.deleteAll')}
-                    >
-                      <TrashIcon />
-                    </ActionIcon>
-                  </Tooltip>
-                ) : (
-                  <Action
-                    color="danger"
-                    variant="outline"
-                    iconLeft={<TrashIcon />}
-                  >
-                    {t('dashboard.page.deleteAll')}
-                  </Action>
-                )}
-              </>
-            )}
-            {showCreateAction &&
-              (isMobile ? (
-                <Tooltip content={t('dashboard.page.createProject')}>
-                  <ActionIcon
-                    themeVariant={'primary'}
-                    onClick={() => setCreateDialogOpen(true)}
-                    aria-label={t('dashboard.page.createProject')}
-                  >
-                    <PlusIcon />
-                  </ActionIcon>
-                </Tooltip>
-              ) : (
-                <Action
-                  iconLeft={<PlusIcon />}
+            {isMobile ? (
+              <Tooltip content={t('dashboard.page.createProject')}>
+                <ActionIcon
+                  themeVariant={'primary'}
                   onClick={() => setCreateDialogOpen(true)}
+                  aria-label={t('dashboard.page.createProject')}
                 >
-                  {t('dashboard.page.createProject')}
-                </Action>
-              ))}
+                  <PlusIcon />
+                </ActionIcon>
+              </Tooltip>
+            ) : (
+              <Action
+                iconLeft={<PlusIcon />}
+                onClick={() => setCreateDialogOpen(true)}
+              >
+                {t('dashboard.page.createProject')}
+              </Action>
+            )}
           </Actions>
         )}
       </Toolbar>

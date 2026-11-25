@@ -1,10 +1,8 @@
-import { attach, combine, createEvent, createStore, sample } from 'effector'
+import { attach, createEvent, createStore, sample } from 'effector'
 
 import { DEFAULT_PROJECT_SORT, type ProjectSort } from './projects-sort'
 
 import {
-  $filteredProjects,
-  canManageProject,
   changeProjectStateFilter,
   deleteProjectMutation,
   type ProjectsFilter,
@@ -52,22 +50,6 @@ export const $isProjectCreateDialogOpen = createStore(false).on(
   (_, open) => open,
 )
 
-/** Enabled only when the selection covers every row currently listed. */
-export const $canDeleteAllProjects = combine(
-  $projectSelection,
-  $filteredProjects,
-  (selection, projects) => {
-    const selected = Object.values(selection)
-
-    return (
-      selected.length > 0 &&
-      projects.length === selected.length &&
-      selected.every(Boolean) &&
-      projects.every((project) => canManageProject(project.role))
-    )
-  },
-)
-
 sample({
   clock: projectStateTabChanged,
   fn: (projectState) => ({ projectState, containsText: '' }),
@@ -81,7 +63,9 @@ const confirmDeleteProjectFx = attach({ effect: confirmFx })
 
 const $pendingDeleteId = createStore<string | null>(null)
   .on(projectDeleteRequested, (_, row) => row.id ?? null)
-  .reset(confirmDeleteProjectFx.finally)
+  // Not on the confirm's `finally`: effector runs it before `done`, which
+  // would clear the id before the delete below could read it.
+  .reset(confirmDeleteProjectFx.fail, deleteProjectMutation.finished.finally)
 
 sample({
   clock: projectDeleteRequested,
@@ -116,7 +100,7 @@ sample({
 sample({
   clock: deleteProjectMutation.finished.success,
   fn: () => ({
-    type: 'error' as const,
+    type: 'success' as const,
     messageKey: 'dashboard.projectsTable.deletedMessage',
   }),
   target: showToastFx,
