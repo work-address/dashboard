@@ -270,24 +270,6 @@ export class MobileTimeTest extends BaseControllerTest {
     expect(after.error).to.include({ name: 'MobileTimeNotAllowedException' })
   }
 
-  @test() async aPublishedEntryKeepsItsSource() {
-    const { owner, worker, project } = await this.world()
-    await this.allow(owner, project)
-    const client = this.client(worker)
-    const desktop = this.item(project, 1, { minutesActive: 10 })
-    const [{ id }] = (await client.post('/time', [desktop])).data
-    expect((await client.post('/time/publish', { ids: [id] })).status).to.equal(
-      200,
-    )
-
-    const retry = await client.post('/time', [{ ...desktop, source: 'mobile' }])
-    expect(retry.data[0].error).to.equal(undefined)
-    expect(await this.entry(id)).to.include({
-      source: 'desktop',
-      keyboardKeys: 4,
-    })
-  }
-
   @test() async phoneTimeIsInvoicedAsTrackedTimeNotManual() {
     const { owner, worker, project } = await this.world()
     await this.allow(owner, project)

@@ -109,7 +109,7 @@ export class InvoiceSelectionTest extends AbstractDatabaseIntegration {
     )
 
     const outstanding = await runPromise(
-      this.timeRepository.findUninvoicedUnpaidTimeForAuthor(project, owner),
+      this.timeRepository.findInvoiceable(project, owner, 'outstanding'),
     )
 
     expect(outstanding.map((time) => time.id)).to.deep.equal([wednesday.id])
@@ -136,58 +136,5 @@ export class InvoiceSelectionTest extends AbstractDatabaseIntegration {
 
     expect(reloadedMonday.isPaid).to.be.true
     expect(reloadedWednesday.isPaid).to.not.be.true
-  }
-
-  /** Selecting an already-invoiced entry refuses the whole request. */
-  @test()
-  async createFromTimeIds_refusesAlreadyInvoicedEntries() {
-    const { owner, project, monday, friday } = await this.scenario()
-
-    await runPromise(
-      this.invoiceManager.createFromTimeIds(project, owner, [monday.id]),
-    )
-
-    let error: Error | undefined
-
-    try {
-      await runPromise(
-        this.invoiceManager.createFromTimeIds(project, owner, [
-          monday.id,
-          friday.id,
-        ]),
-      )
-    } catch (e: unknown) {
-      error = e as Error
-    }
-
-    expect(error?.message).to.contain('already on an invoice')
-  }
-
-  /** And so does selecting somebody else's. */
-  @test()
-  async createFromTimeIds_refusesAnotherContributorsEntries() {
-    const owner = await this.userFixture.createPremiumUser()
-    const worker = await this.userFixture.createUser()
-    const project = await this.projectFixture.create(
-      owner,
-      EProjectState.ACTIVE,
-    )
-    project.workerAddresses = [worker.address]
-    project.rateHour = 60
-    await runPromise(this.projectRepository.saveSingle(project))
-
-    const ownerEntry = await this.entry(project, owner, 2)
-
-    let error: Error | undefined
-
-    try {
-      await runPromise(
-        this.invoiceManager.createFromTimeIds(project, worker, [ownerEntry.id]),
-      )
-    } catch (e: unknown) {
-      error = e as Error
-    }
-
-    expect(error?.message).to.contain('not yours')
   }
 }

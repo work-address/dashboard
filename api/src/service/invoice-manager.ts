@@ -122,11 +122,10 @@ export class InvoiceManager {
         )
       }
 
-      const times = yield* this.timeRepository.findUnpaidTimeForAuthorBetween(
-        fromAt,
-        toAt,
+      const times = yield* this.timeRepository.findInvoiceable(
         accessible,
         author,
+        { from: fromAt, to: toAt },
       )
 
       // With no human time the invoice can still carry agent lines; the
@@ -168,27 +167,12 @@ export class InvoiceManager {
     return Effect.gen(this, function* () {
       const accessible = yield* this.assertCanInvoice(project, author)
 
-      const unique = [...new Set(timeIds)]
-
-      if (unique.length === 0) {
-        return yield* Effect.fail(
-          new BadRequestError('No time entries were selected'),
-        )
-      }
-
-      const times = yield* this.timeRepository.findInvoiceableByIds(
-        unique,
+      // Refused whole unless every id is the author's and still invoiceable.
+      const times = yield* this.timeRepository.findInvoiceable(
         accessible,
         author,
+        { ids: timeIds },
       )
-
-      if (times.length !== unique.length) {
-        return yield* Effect.fail(
-          new BadRequestError(
-            'Some of the selected entries are not yours, already paid, or already on an invoice',
-          ),
-        )
-      }
 
       const invoice = new Invoice()
 
@@ -334,11 +318,11 @@ export class InvoiceManager {
     return Effect.gen(this, function* () {
       const accessible = yield* this.assertCanInvoice(project, author)
 
-      const outstanding =
-        yield* this.timeRepository.findUninvoicedUnpaidTimeForAuthor(
-          accessible,
-          author,
-        )
+      const outstanding = yield* this.timeRepository.findInvoiceable(
+        accessible,
+        author,
+        'outstanding',
+      )
 
       if (
         outstanding.length === 0 &&

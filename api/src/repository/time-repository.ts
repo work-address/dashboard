@@ -11,8 +11,7 @@ import { fromPromise } from '@/service/effect-bridge'
 import { Time } from '@/entity/time'
 import { AppUsage } from '@/entity/app-usage'
 import { TimeLocation } from '@/entity/time-location'
-import { UsageResult } from '@/service/app-usage-policy'
-import { LocationResult, NO_LOCATION } from '@/service/location-policy'
+import { EntryUploadOutcome, EntryUploadRow } from '@/service/entry-upload'
 import { ProjectAccess } from '@/service/project-access'
 import { validate } from 'class-validator'
 import ConstraintsValidationException from '@/exception/constraints-validation-exception'
@@ -64,9 +63,11 @@ const DETAIL_SORT_COLUMNS = new Set([
   'time.screenshot',
 ])
 
-/** What an author may still bill: not paid by hand, and on no invoice. */
-const INVOICEABLE =
-  'COALESCE(time.isPaid, false) = false AND time.invoiceId IS NULL'
+/** Which of an author's invoiceable Entries `findInvoiceable` returns. */
+export type InvoiceableSelection =
+  | { ids: string[] }
+  | { from: Date; to: Date }
+  | 'outstanding'
 
 @injectable()
 export class TimeRepository extends AbstractRepositoryTemplate<Time> {
@@ -100,18 +101,23 @@ export class TimeRepository extends AbstractRepositoryTemplate<Time> {
     })
   }
 
-  public saveWithUsage(
-    time: Time,
-    usage: UsageResult,
-    location: LocationResult = NO_LOCATION,
-  ): RepoEffect<Time> {
+  /**
+   * Stores one upload of a slice: locks the author's slice, loads what is
+   * stored for it, and saves what `decide` makes of that. `decide` is
+   * `EntryUpload.decide`, which alone says what an upload may change; a
+   * refusal is thrown and nothing is written.
+   */
+  public storeUpload(
+    slot: { project: Project; author: User; fromAt: Date },
+    decide: (existing: Time | undefined) => EntryUploadOutcome,
+  ): RepoEffect<{ saved: Time; row: EntryUploadRow }> {
+    const { project, author, fromAt } = slot
+
     return fromPromise(() =>
       this.getRepo().manager.transaction(async (manager) => {
         await manager.query(
           'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-          [
-            `time:${time.project.id}:${time.user.id}:${time.fromAt.toISOString()}`,
-          ],
+          [`time:${project.id}:${author.id}:${fromAt.toISOString()}`],
         )
         const existing = await manager
           .getRepository(Time)
@@ -120,73 +126,35 @@ export class TimeRepository extends AbstractRepositoryTemplate<Time> {
           .leftJoinAndSelect('time.invoice', 'invoice')
           .where(
             'time.projectId=:project AND time.userId=:user AND time.fromAt=:from',
-            { project: time.project.id, user: time.user.id, from: time.fromAt },
+            { project: project.id, user: author.id, from: fromAt },
           )
           .setLock('pessimistic_write', undefined, ['time'])
           .getOne()
-        const preserveUsage = existing && this.access.published(existing)
-        if (
-          preserveUsage &&
-          (+time.toAt !== +existing.toAt ||
-            time.minutesActive !== existing.minutesActive)
-        )
-          throw new BadRequestError(
-            'Published time accounting cannot be changed by an upload',
-          )
-        if (existing) {
-          time.id = existing.id
-          time.invoice = existing.invoice
-          time.publishedAt = existing.publishedAt
-          time.isPaid = existing.isPaid
-        }
-        if (preserveUsage) {
-          // Evidence never changes once the owner can see it: a desktop retry
-          // must not restore a removed screenshot, rewrite input counts, or put
-          // back a note its author has since corrected.
-          time.note = existing.note
-          // Which part of an invoice the time is billed in stays as published.
-          time.source = existing.source
-          time.screenshot = existing.screenshot
-          time.processes = existing.processes
-          time.keyboardKeys = existing.keyboardKeys
-          time.mouseKeys = existing.mouseKeys
-          time.mouseDistance = existing.mouseDistance
-        }
-        time.appsStatus = usage.status
-        time.appsReason = usage.reason
-        time.appsTruncated = usage.truncated
-        if (preserveUsage) {
-          time.appsStatus = existing.appsStatus
-          time.appsReason = existing.appsReason
-          time.appsTruncated = existing.appsTruncated
-        }
-        // Location its author removed stays removed, published or not: the
-        // phone may send the same slice again until it hears back.
-        const keepLocation =
-          preserveUsage || existing?.locationStatus === 'removed'
-        time.locationStatus =
-          keepLocation && existing ? existing.locationStatus : location.status
-        const errors = await validate(time)
+        const outcome = decide(existing ?? undefined)
+        if ('refused' in outcome) throw outcome.refused
+        const { entry, usage, locations, row } = outcome
+        const errors = await validate(entry)
         if (errors.length) throw new ConstraintsValidationException(errors)
-        const saved = await manager.save(Time, time)
-        if (!keepLocation) {
+        const saved = await manager.save(Time, entry)
+        if (locations) {
           await manager.delete(TimeLocation, { time: { id: saved.id } })
-          if (location.rows.length)
+          if (locations.length)
             await manager.insert(
               TimeLocation,
-              location.rows.map((row) => ({ ...row, time: saved })),
+              locations.map((point) => ({ ...point, time: saved })),
             )
         }
-        if (preserveUsage) return saved
-        await manager.delete(AppUsage, { time: { id: saved.id } })
-        if (usage.rows.length)
-          await manager.save(
-            AppUsage,
-            usage.rows.map((row) =>
-              manager.create(AppUsage, { ...row, time: saved }),
-            ),
-          )
-        return saved
+        if (usage) {
+          await manager.delete(AppUsage, { time: { id: saved.id } })
+          if (usage.length)
+            await manager.save(
+              AppUsage,
+              usage.map((usageRow) =>
+                manager.create(AppUsage, { ...usageRow, time: saved }),
+              ),
+            )
+        }
+        return { saved, row }
       }),
     )
   }
@@ -801,115 +769,57 @@ export class TimeRepository extends AbstractRepositoryTemplate<Time> {
     })
   }
 
-  public findTimeSingleForProject(
-    project: Project,
-    from: Date,
-    to: Date,
-    author?: User,
-  ): RepoEffect<Time | undefined> {
-    return fromPromise(() =>
-      this.getRepo()
-        .createQueryBuilder('time')
-        .innerJoinAndSelect('time.project', 'project')
-        .innerJoinAndSelect('time.user', 'user')
-        .andWhere('project.id = :projectId', { projectId: project.id })
-        .andWhere('time.fromAt = :from', { from })
-        .andWhere(
-          author ? 'user.id = :authorId' : 'time.toAt = :to',
-          author ? { authorId: author.id } : { to },
-        )
-        .leftJoinAndSelect('time.invoice', 'invoice')
-        .getOne()
-        .then((result) => result ?? undefined),
-    )
-  }
-
   /**
-   * A single contributor's unpaid time on one project within a range - the
-   * entries an invoice is built from.
+   * An author's Entries on a project that an invoice may still bill: not paid
+   * by hand and not Invoiced (`invoicedSql`, so an old invoice's period counts
+   * too), in time order. Scoped by author: a worker invoices for the hours
+   * *they* logged, and an owner for theirs.
    *
-   * Scoped by author rather than by project owner: a worker invoices for the
-   * hours *they* logged, and an owner for theirs. `findTimeBetweenForProject`
-   * scopes by owner instead, which sums every contributor's hours together.
+   * - `{ ids }`: exactly those Entries, or a refusal if any is someone else's,
+   *   on another project, paid or Invoiced, so a request never quietly bills
+   *   the subset that passed.
+   * - `{ from, to }`: those inside the period.
+   * - `'outstanding'`: all of them. Creating an invoice doesn't mark its hours
+   *   paid, so "unpaid" alone would let a second click bill them again.
    */
-  public findUnpaidTimeForAuthorBetween(
-    from: Date,
-    to: Date,
+  public findInvoiceable(
     project: Project,
     author: User,
+    selection: InvoiceableSelection,
   ): RepoEffect<Time[]> {
-    return fromPromise(() =>
-      this.getRepo()
-        .createQueryBuilder('time')
-        .innerJoinAndSelect('time.project', 'project')
-        .innerJoin('time.user', 'author')
-        .andWhere('time.fromAt >= :from', { from })
-        .andWhere('time.toAt <= :to', { to })
-        .andWhere('author.id = :authorId', { authorId: author.id })
-        .andWhere('project.id = :projectId', { projectId: project.id })
-        .andWhere('project.deletedAt IS NULL')
-        .andWhere(INVOICEABLE)
-        .getMany(),
-    )
-  }
+    const qb = this.getRepo()
+      .createQueryBuilder('time')
+      .innerJoinAndSelect('time.project', 'project')
+      .andWhere('time.userId = :authorId', { authorId: author.id })
+      .andWhere('project.id = :projectId', { projectId: project.id })
+      .andWhere('project.deletedAt IS NULL')
+      .andWhere('COALESCE(time.isPaid, false) = false')
+      .andWhere(`NOT ${this.invoicedSql()}`)
+      .orderBy('time.fromAt', 'ASC')
 
-  /**
-   * The caller's unpaid time on a project that no invoice of theirs already
-   * covers.
-   *
-   * "Unpaid" alone is not enough: creating an invoice does not mark its hours
-   * paid - only settling it does - so a second click would raise a second
-   * invoice for the same hours and bill them twice. The `invoiceId` link is
-   * what makes the operation idempotent, and it is exact: a period-overlap
-   * test would also claim entries between two selected days that nobody
-   * chose to bill.
-   */
-  public findUninvoicedUnpaidTimeForAuthor(
-    project: Project,
-    author: User,
-  ): RepoEffect<Time[]> {
-    return fromPromise(() =>
-      this.getRepo()
-        .createQueryBuilder('time')
-        .innerJoinAndSelect('time.project', 'project')
-        .innerJoin('time.user', 'author')
-        .andWhere('author.id = :authorId', { authorId: author.id })
-        .andWhere('project.id = :projectId', { projectId: project.id })
-        .andWhere('project.deletedAt IS NULL')
-        .andWhere(INVOICEABLE)
-        .orderBy('time.fromAt', 'ASC')
-        .getMany(),
-    )
-  }
+    if (selection === 'outstanding') return fromPromise(() => qb.getMany())
 
-  /**
-   * Specific entries, restricted to ones the author may still invoice.
-   *
-   * Filtered rather than fetched-then-checked so an id belonging to someone
-   * else, to another project, or to already-billed work simply does not come
-   * back - the caller compares counts and refuses the whole request.
-   */
-  public findInvoiceableByIds(
-    ids: string[],
-    project: Project,
-    author: User,
-  ): RepoEffect<Time[]> {
-    if (ids.length === 0) {
-      return Effect.succeed([])
+    if ('from' in selection) {
+      qb.andWhere('time.fromAt >= :from', { from: selection.from }).andWhere(
+        'time.toAt <= :to',
+        { to: selection.to },
+      )
+      return fromPromise(() => qb.getMany())
     }
 
-    return fromPromise(() =>
-      this.getRepo()
-        .createQueryBuilder('time')
-        .innerJoinAndSelect('time.project', 'project')
-        .innerJoin('time.user', 'author')
-        .andWhere('time.id IN (:...ids)', { ids })
-        .andWhere('author.id = :authorId', { authorId: author.id })
-        .andWhere('project.id = :projectId', { projectId: project.id })
-        .andWhere('project.deletedAt IS NULL')
-        .andWhere(INVOICEABLE)
-        .orderBy('time.fromAt', 'ASC')
-        .getMany(),
+    const ids = [...new Set(selection.ids)]
+    if (!ids.length)
+      return Effect.fail(new BadRequestError('No time entries were selected'))
+    qb.andWhere('time.id IN (:...ids)', { ids })
+
+    return fromPromise(() => qb.getMany()).pipe(
+      Effect.filterOrFail(
+        (times) => times.length === ids.length,
+        () =>
+          new BadRequestError(
+            'Some of the selected entries are not yours, already paid, or already on an invoice',
+          ),
+      ),
     )
   }
 

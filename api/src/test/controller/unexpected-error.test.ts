@@ -151,8 +151,8 @@ export class UnexpectedErrorTest extends BaseControllerTest {
   async anUploadedEntry_reportsADatabaseErrorGenerically_andLogsNoText() {
     const user = await this.userFixture.createUser()
     const project = await this.projectFixture.createPersonal(user)
-    const saveWithUsage = TimeRepository.prototype.saveWithUsage
-    TimeRepository.prototype.saveWithUsage = () => Effect.fail(queryFailure())
+    const storeUpload = TimeRepository.prototype.storeUpload
+    TimeRepository.prototype.storeUpload = () => Effect.fail(queryFailure())
     const end = Date.now() - 60_000
     let response: { status: number; data: { error: unknown }[] } | undefined
     let entries: { message: string; data: unknown }[] = []
@@ -174,7 +174,7 @@ export class UnexpectedErrorTest extends BaseControllerTest {
         ])
       })
     } finally {
-      TimeRepository.prototype.saveWithUsage = saveWithUsage
+      TimeRepository.prototype.storeUpload = storeUpload
     }
 
     expect(response?.status).to.equal(200)

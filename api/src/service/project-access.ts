@@ -132,6 +132,20 @@ export class ProjectAccess {
     return published(time, time.project, now)
   }
 
+  /** `reviewEnded`, for a caller with no container: it reads nothing injected. */
+  public static reviewEnded(
+    toAt: Date,
+    reviewWindowHours: number | null | undefined,
+    now: number,
+  ): boolean {
+    return reviewEnded(toAt, reviewWindowHours, now)
+  }
+
+  /** `published`, for a caller with no container, such as `EntryUpload`. */
+  public static published(time: Time, now: number): boolean {
+    return published(time, time.project, now)
+  }
+
   public publishedSql(): string {
     return `(time."publishedAt" IS NOT NULL OR time."invoiceId" IS NOT NULL OR
       time."toAt" + COALESCE(project."reviewWindowHours",${DEFAULT_REVIEW_WINDOW_HOURS}) * INTERVAL '1 hour' <= NOW())`

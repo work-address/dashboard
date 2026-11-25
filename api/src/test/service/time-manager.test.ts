@@ -316,6 +316,45 @@ export class TimeManagerTest extends AbstractDatabaseIntegration {
     expect(original.note).to.equal(payload.note)
   }
 
+  /**
+   * A tracker that hears nothing back sends the same slice again, sometimes
+   * while the first upload is still being stored. The slice's lock makes the
+   * second wait and update the first's Entry; without it both would insert and
+   * one would fail on the unique slice key. What either may change is
+   * `EntryUpload`'s, tested without a database in entry-upload.test.ts.
+   */
+  @test()
+  async createOrUpdateMany_storesOneEntryForTheSameSliceSentTwiceAtOnce() {
+    const owner = await this.userFixture.createPremiumUser()
+    const project = await this.projectFixture.create(
+      owner,
+      EProjectState.ACTIVE,
+    )
+    const payload = this.buildTimePayload(project.id, 80)
+
+    const results = await Promise.all(
+      [1, 2, 3].map((attempt) =>
+        runPromise(
+          this.timeManager.createOrUpdateMany(
+            [{ ...payload, note: `attempt ${attempt}` }],
+            owner,
+          ),
+        ).then(([result]) => result),
+      ),
+    )
+
+    expect(results.map((result) => result.error)).to.deep.equal([
+      undefined,
+      undefined,
+      undefined,
+    ])
+    expect(new Set(results.map((result) => result.id)).size).to.equal(1)
+    const stored = await runPromise(
+      this.timeRepository.findBy({ where: { project: { id: project.id } } }),
+    )
+    expect(stored).to.have.length(1)
+  }
+
   @test()
   async setIsPaidMany_allowsAuthorToMarkOwnEntries() {
     const owner = await this.userFixture.createUser()
