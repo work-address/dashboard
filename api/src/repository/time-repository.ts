@@ -32,6 +32,7 @@ import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity
 import AccessException from '@/exception/access-exception'
 import InvoicedTimeException from '@/exception/invoiced-time-exception'
 import { TimeSearchDto } from '@/model/dto/time'
+import { BadRequestError } from 'routing-controllers'
 
 /** Every order the entry list can ask for, by the name it asks with. */
 const TIME_SORT_COLUMN_BY_KEY = new Map([
@@ -62,9 +63,11 @@ const DETAIL_SORT_COLUMNS = new Set([
   'time.screenshot',
 ])
 
-/** What an author may still bill: not paid by hand, and on no invoice. */
-const INVOICEABLE =
-  'COALESCE(time.isPaid, false) = false AND time.invoiceId IS NULL'
+/** Which of an author's invoiceable Entries `findInvoiceable` returns. */
+export type InvoiceableSelection =
+  | { ids: string[] }
+  | { from: Date; to: Date }
+  | 'outstanding'
 
 @injectable()
 export class TimeRepository extends AbstractRepositoryTemplate<Time> {
@@ -767,91 +770,56 @@ export class TimeRepository extends AbstractRepositoryTemplate<Time> {
   }
 
   /**
-   * A single contributor's unpaid time on one project within a range - the
-   * entries an invoice is built from.
+   * An author's Entries on a project that an invoice may still bill: not paid
+   * by hand and not Invoiced (`invoicedSql`, so an old invoice's period counts
+   * too), in time order. Scoped by author: a worker invoices for the hours
+   * *they* logged, and an owner for theirs.
    *
-   * Scoped by author rather than by project owner: a worker invoices for the
-   * hours *they* logged, and an owner for theirs. `findTimeBetweenForProject`
-   * scopes by owner instead, which sums every contributor's hours together.
+   * - `{ ids }`: exactly those Entries, or a refusal if any is someone else's,
+   *   on another project, paid or Invoiced, so a request never quietly bills
+   *   the subset that passed.
+   * - `{ from, to }`: those inside the period.
+   * - `'outstanding'`: all of them. Creating an invoice doesn't mark its hours
+   *   paid, so "unpaid" alone would let a second click bill them again.
    */
-  public findUnpaidTimeForAuthorBetween(
-    from: Date,
-    to: Date,
+  public findInvoiceable(
     project: Project,
     author: User,
+    selection: InvoiceableSelection,
   ): RepoEffect<Time[]> {
-    return fromPromise(() =>
-      this.getRepo()
-        .createQueryBuilder('time')
-        .innerJoinAndSelect('time.project', 'project')
-        .innerJoin('time.user', 'author')
-        .andWhere('time.fromAt >= :from', { from })
-        .andWhere('time.toAt <= :to', { to })
-        .andWhere('author.id = :authorId', { authorId: author.id })
-        .andWhere('project.id = :projectId', { projectId: project.id })
-        .andWhere('project.deletedAt IS NULL')
-        .andWhere(INVOICEABLE)
-        .getMany(),
-    )
-  }
+    const qb = this.getRepo()
+      .createQueryBuilder('time')
+      .innerJoinAndSelect('time.project', 'project')
+      .andWhere('time.userId = :authorId', { authorId: author.id })
+      .andWhere('project.id = :projectId', { projectId: project.id })
+      .andWhere('project.deletedAt IS NULL')
+      .andWhere('COALESCE(time.isPaid, false) = false')
+      .andWhere(`NOT ${this.invoicedSql()}`)
+      .orderBy('time.fromAt', 'ASC')
 
-  /**
-   * The caller's unpaid time on a project that no invoice of theirs already
-   * covers.
-   *
-   * "Unpaid" alone is not enough: creating an invoice does not mark its hours
-   * paid - only settling it does - so a second click would raise a second
-   * invoice for the same hours and bill them twice. The `invoiceId` link is
-   * what makes the operation idempotent, and it is exact: a period-overlap
-   * test would also claim entries between two selected days that nobody
-   * chose to bill.
-   */
-  public findUninvoicedUnpaidTimeForAuthor(
-    project: Project,
-    author: User,
-  ): RepoEffect<Time[]> {
-    return fromPromise(() =>
-      this.getRepo()
-        .createQueryBuilder('time')
-        .innerJoinAndSelect('time.project', 'project')
-        .innerJoin('time.user', 'author')
-        .andWhere('author.id = :authorId', { authorId: author.id })
-        .andWhere('project.id = :projectId', { projectId: project.id })
-        .andWhere('project.deletedAt IS NULL')
-        .andWhere(INVOICEABLE)
-        .orderBy('time.fromAt', 'ASC')
-        .getMany(),
-    )
-  }
+    if (selection === 'outstanding') return fromPromise(() => qb.getMany())
 
-  /**
-   * Specific entries, restricted to ones the author may still invoice.
-   *
-   * Filtered rather than fetched-then-checked so an id belonging to someone
-   * else, to another project, or to already-billed work simply does not come
-   * back - the caller compares counts and refuses the whole request.
-   */
-  public findInvoiceableByIds(
-    ids: string[],
-    project: Project,
-    author: User,
-  ): RepoEffect<Time[]> {
-    if (ids.length === 0) {
-      return Effect.succeed([])
+    if ('from' in selection) {
+      qb.andWhere('time.fromAt >= :from', { from: selection.from }).andWhere(
+        'time.toAt <= :to',
+        { to: selection.to },
+      )
+      return fromPromise(() => qb.getMany())
     }
 
-    return fromPromise(() =>
-      this.getRepo()
-        .createQueryBuilder('time')
-        .innerJoinAndSelect('time.project', 'project')
-        .innerJoin('time.user', 'author')
-        .andWhere('time.id IN (:...ids)', { ids })
-        .andWhere('author.id = :authorId', { authorId: author.id })
-        .andWhere('project.id = :projectId', { projectId: project.id })
-        .andWhere('project.deletedAt IS NULL')
-        .andWhere(INVOICEABLE)
-        .orderBy('time.fromAt', 'ASC')
-        .getMany(),
+    const ids = [...new Set(selection.ids)]
+    if (!ids.length)
+      return Effect.fail(new BadRequestError('No time entries were selected'))
+    qb.andWhere('time.id IN (:...ids)', { ids })
+
+    return fromPromise(() => qb.getMany()).pipe(
+      Effect.filterOrFail(
+        (times) => times.length === ids.length,
+        () =>
+          new BadRequestError(
+            'Some of the selected entries are not yours, already paid, or already on an invoice',
+          ),
+      ),
     )
   }
 

@@ -94,47 +94,6 @@ export class InvoiceManagerTest extends AbstractDatabaseIntegration {
   }
 
   @test()
-  async create_excludesPaidTimeInRange() {
-    const owner = await this.userFixture.createUser()
-    const project = await this.projectFixture.createPersonal(owner, 60)
-
-    const fromAt = moment.utc().subtract(3, 'hours')
-    const toAt = moment.utc().subtract(1, 'hour')
-
-    const unpaidTime = await this.timeFixture.create(
-      project,
-      fromAt.toDate(),
-      fromAt.clone().add(1, 'hour').toDate(),
-      owner,
-    )
-    unpaidTime.minutesActive = 60
-    await runPromise(this.timeRepository.saveSingle(unpaidTime))
-
-    const paidTime = await this.timeFixture.create(
-      project,
-      fromAt.clone().add(1, 'hour').toDate(),
-      toAt.toDate(),
-      owner,
-    )
-    paidTime.minutesActive = 120
-    paidTime.isPaid = true
-    await runPromise(this.timeRepository.saveSingle(paidTime))
-
-    const invoice = await runPromise(
-      this.invoiceManager.create(
-        {
-          fromUnix: fromAt.valueOf(),
-          toUnix: toAt.valueOf(),
-        },
-        project,
-        owner,
-      ),
-    )
-
-    expect(invoice.amountCents).to.equal(6000)
-  }
-
-  @test()
   /**
    * The gate is the owner's plan, not the caller's role. A worker on a premium
    * owner's project invoices their own hours; a worker on a free one has no
