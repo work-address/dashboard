@@ -30,7 +30,7 @@ Differences found by reading, each with the expected answer:
 | Area | Decision | Not chosen |
 | --- | --- | --- |
 | Which is right | The API, unless `SPEC.md` says otherwise. Then the API is the bug | Treating the two as equals |
-| What gets shared as code | Statistics scope resolution and report permissions, in `statistics-core` | Importing API modules into the browser bundle; a shared policy package, since membership is small enough to pin through scenarios |
+| What gets shared as code | Statistics scope resolution and report permissions, in `statistics-core`. Since 25 November 2026 also every per-row domain rule: Role, Access, Published, detail visible, Invoiced, invoiceable, phone time allowed, and invoice lines with their amounts, in `statistics-core`'s `access.ts`, `entry-rules.ts` and `invoice-lines.ts`. Scenarios alone let the mock drift wherever nobody had written one: a free owner's workers lost sight of their record, and invoices had no agent lines | Importing API modules into the browser bundle; a separate package for the rules, which would need its own build in front of the API and the Docker image for no gain |
 | SQL aggregation | Stays in the repository for performance, verified by scenario | Sharing it, which would mean aggregating in memory |
 | Scenarios | Permissions and shapes first: status code, which fields are present, which rows appear | Exact figures across worlds, which would pin the mock's seed data |
 | Where they live | New workspace package `packages/api-contract`, framework-free, with one runner each for Mocha and Vitest | Choosing one test runner for both |
@@ -61,6 +61,8 @@ Both callers pass in projects already labelled with the reader's role, and the A
 Start from the `SPEC.md` table, one row per cell, then add each row of the differences table above. Also cover: role × entry detail before and after the review window; role × invoice read, pay and reject; role × each statistics report; a closed project in search.
 
 Delete mock tests that only restate these. Keep `db.test.ts` and the insights tests, which cover the seed and pure calculation.
+
+Where the mock calls the core for a rule, `contract.test.ts` skips the scenarios that only restate it (`COVERED_BY_CORE`, each with the rule that decides it), keeping one that holds the mock's wiring. The core's own tests are in `packages/statistics-core/test`, run by the web's unit project. The API runs every scenario, because it keeps SQL forms of these rules that the core cannot check.
 
 `.github` holds only `agent-tracker.yml`, so no workflow runs these suites today. Add one that runs the contract suite for both adapters. Without it, drift goes unnoticed until someone runs tests by hand.
 

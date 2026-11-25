@@ -54,7 +54,8 @@ export interface ContractWorld {
    * `draftEntry`; `otherAgent`'s is codex, failed, 10 minutes from
    * `otherAgentRunFromUnix`, a day earlier and beside no entry. `agent` is on
    * the worker's agent list, named 'claude-code', and on `project` at $12/h;
-   * `otherAgent` has no rate there.
+   * `otherAgent` has no rate there. Both runs finished long enough ago to be
+   * billed.
    */
   agent: string
   otherAgent: string
@@ -254,6 +255,18 @@ const rowsAre = (name: string, rows: unknown, expected: unknown[]) =>
   JSON.stringify(rows) === JSON.stringify(expected)
     ? undefined
     : `${name} is ${JSON.stringify(rows)}, not ${JSON.stringify(expected)}`
+
+/** An invoice line as an invoice answers it. */
+interface InvoiceLineBody {
+  kind: 'human' | 'agent'
+  agentId?: string
+  minutes: number
+  amountCents: number
+}
+
+/** A line in a word: what it bills, for how long, for how much. */
+const lineOf = (line: InvoiceLineBody) =>
+  `${line.kind}${line.agentId ? ` ${line.agentId}` : ''} ${line.minutes} min ${line.amountCents}`
 
 /**
  * What is wrong with an agent report that should hold these agents of the
@@ -562,6 +575,45 @@ export const CONTRACT_SCENARIOS: ContractScenario[] = [
       body.amountCents === 3000
         ? undefined
         : `amountCents is ${body.amountCents}, not 3000`,
+  },
+  {
+    name: 'a period with no entries bills the agent runs that start in it',
+    as: 'worker',
+    request: (w) => ({
+      method: 'post',
+      path: `/invoice/project/${w.project}`,
+      body: {
+        fromUnix: w.agentRunFromUnix,
+        toUnix: w.agentRunFromUnix + 5 * 60_000,
+      },
+    }),
+    status: 200,
+    check: (body, w) =>
+      rowsAre('the lines', (body.lines as InvoiceLineBody[]).map(lineOf), [
+        `agent ${w.agent} 30 min 600`,
+      ]) ??
+      (body.amountCents === 600
+        ? undefined
+        : `amountCents is ${body.amountCents}, not 600`),
+  },
+  {
+    name: 'an invoice of everything outstanding bills agent runs as lines of their own',
+    as: 'worker',
+    request: (w) => ({ method: 'post', path: `/invoice/project/${w.project}` }),
+    status: 200,
+    check: (body, w) => {
+      const lines = body.lines as InvoiceLineBody[]
+      const agent = lines.find((line) => line.agentId === w.agent)
+      const total = lines.reduce((sum, line) => sum + line.amountCents, 0)
+
+      return lines[0]?.kind !== 'human'
+        ? `the first line is ${JSON.stringify(lines[0])}`
+        : !agent || lineOf(agent) !== `agent ${w.agent} 30 min 600`
+          ? `the agent line is ${JSON.stringify(agent)}`
+          : total !== body.amountCents
+            ? `the lines sum to ${total}, the invoice says ${body.amountCents}`
+            : undefined
+    },
   },
 
   // Entries: SPEC.md "Time.isPaid is set by an invoice or by its author"

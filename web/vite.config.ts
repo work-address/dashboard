@@ -106,7 +106,11 @@ export default defineConfig(({ command, mode }) => {
             // browser - keeping it a separate project means `--project unit`
             // runs without playwright installed.
             environment: 'node',
-            include: ['src/**/*.test.{ts,tsx}'],
+            // The rule core the mock and the API share is tested once, here.
+            include: [
+              'src/**/*.test.{ts,tsx}',
+              '../packages/statistics-core/test/**/*.test.ts',
+            ],
           },
         },
         {

@@ -4,9 +4,13 @@
  * session and the API's error statuses, so a handler only says what the API
  * would answer.
  */
+import {
+  canonicalAddress,
+  FREE_PLAN_WORKERS,
+} from '@work-address/statistics-core'
 import { http, HttpResponse, delay, type HttpHandler } from 'msw'
 
-import { spanMinutes } from './db'
+import { issueInvoice, setInvoiceState } from './billing'
 import { settleHistory } from './kept-history'
 import {
   listReports,
@@ -23,19 +27,20 @@ import {
   type DemoSignIn,
 } from './settings'
 import {
+  accessOn,
   canListEntry,
   hasDetail,
   isInvoiced,
   isOwner,
-  isViewer,
   isPublished,
-  isWorker,
+  listedWorkers,
   projectOf,
   shapeInvoice,
   shapeProject,
   shapeRun,
   shapeTime,
   shapeUser,
+  trackingOf,
   userOf,
   visibleProjects,
 } from './shape'
@@ -235,6 +240,27 @@ function idsForAddresses(db: Db, addresses: unknown): string[] {
   })
 }
 
+/** The owner's workers and which of them their plan lets record: `Plan.trackingWorkers`. */
+function trackingWorkersOf(db: Db, ownerId: string) {
+  const listed = listedWorkers(db, ownerId)
+  const tracking = trackingOf(db, ownerId)
+
+  return {
+    limited: !userOf(db, ownerId)?.premium && listed.length > FREE_PLAN_WORKERS,
+    limit: FREE_PLAN_WORKERS,
+    workers: listed.map((id) => {
+      const worker = userOf(db, id)
+
+      return {
+        address: worker?.address ?? id,
+        name: worker?.name || null,
+        connected: true,
+        tracking: tracking.has(canonicalAddress(id)),
+      }
+    }),
+  }
+}
+
 const PROJECT_FIELDS = [
   'title',
   'text',
@@ -379,10 +405,9 @@ function searchTimes({ db, meId, body }: Ctx) {
   return [(items as MockTime[]).map((time) => shapeTime(db, time, meId)), total]
 }
 
-/** Entries the reader may change: their own record, nobody else's. */
 /** SPEC.md "An invoiced entry keeps its detail": the whole batch is refused. */
-function keepInvoiced(times: MockTime[]) {
-  if (times.some(isInvoiced)) {
+function keepInvoiced(db: Db, times: MockTime[]) {
+  if (times.some((time) => isInvoiced(db, time))) {
     fail(
       400,
       'This time is on an invoice, so its detail stays unless the invoice is rejected',
@@ -390,6 +415,7 @@ function keepInvoiced(times: MockTime[]) {
   }
 }
 
+/** Entries the reader may change: their own record, nobody else's. */
 function editableTimes(db: Db, meId: string, ids: unknown) {
   const wanted = new Set(Array.isArray(ids) ? (ids as string[]) : [])
   const rows = db.times.filter((time) => wanted.has(time.id))
@@ -434,100 +460,6 @@ function settleableInvoice(db: Db, meId: string, id: string) {
     fail(400, 'A rejected invoice cannot be paid')
   }
   return invoice!
-}
-
-function setInvoiceState(
-  db: Db,
-  invoice: MockInvoice,
-  state: MockInvoice['state'],
-  reason?: string,
-) {
-  const now = new Date().toISOString()
-  const next: MockInvoice = {
-    ...invoice,
-    state,
-    updatedAt: now,
-    paidAt: state === 'PAID' ? now : null,
-    rejectedAt: state === 'REJECTED' ? now : null,
-    rejectionReason: state === 'REJECTED' ? (reason ?? null) : null,
-    timeIds: state === 'REJECTED' ? [] : invoice.timeIds,
-  }
-  for (const time of db.times.filter((t) => invoice.timeIds.includes(t.id))) {
-    saveRow('times', {
-      ...time,
-      isPaid: state === 'PAID',
-      invoiceId: state === 'REJECTED' ? null : invoice.id,
-    })
-  }
-  return saveRow('invoices', next)
-}
-
-/**
- * Issues an invoice for the caller's unpaid, uninvoiced time on a project: the
- * entries chosen, those inside a range, or everything outstanding - where,
- * with nothing left to bill, the latest invoice stands.
- */
-function issueInvoice(
-  db: Db,
-  meId: string,
-  project: MockProject,
-  chosen: { timeIds?: string[]; fromUnix?: number; toUnix?: number },
-): MockInvoice | null {
-  const wanted = new Set(chosen.timeIds ?? [])
-  const { fromUnix: from, toUnix: to } = chosen
-  const ranged = wanted.size === 0 && from !== undefined && to !== undefined
-  const entries = db.times
-    .filter(
-      (t) =>
-        t.projectId === project.id &&
-        t.userId === meId &&
-        !t.invoiceId &&
-        !t.isPaid,
-    )
-    .filter((t) => wanted.size === 0 || wanted.has(t.id))
-    .filter(
-      (t) =>
-        !ranged || (Date.parse(t.fromAt) >= from && Date.parse(t.toAt) <= to),
-    )
-    .sort((a, b) => a.fromAt.localeCompare(b.fromAt))
-  if (wanted.size > 0 && entries.length !== wanted.size) {
-    fail(
-      400,
-      'Some of the selected entries are not yours, already paid, or already on an invoice',
-    )
-  }
-  if (entries.length === 0) {
-    if (ranged) {
-      fail(400, 'There is no unpaid tracked time in that period')
-    }
-    // Everything outstanding is billed already: the latest stands.
-    const latest = db.invoices
-      .filter((i) => i.projectId === project.id && i.userId === meId)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
-    return latest ?? null
-  }
-  const now = new Date().toISOString()
-  const rateHourCents = Math.round(Number(project.rateHour) * 100)
-  const invoice = saveRow('invoices', {
-    id: crypto.randomUUID(),
-    createdAt: now,
-    updatedAt: now,
-    projectId: project.id,
-    userId: meId,
-    fromAt: entries[0].fromAt,
-    toAt: entries.at(-1)!.toAt,
-    amountCents: Math.round((spanMinutes(entries) * rateHourCents) / 60),
-    rateHourCents,
-    state: 'Requested',
-    rejectionReason: null,
-    rejectedAt: null,
-    paidAt: null,
-    timeIds: entries.map((t) => t.id),
-  } satisfies MockInvoice)
-  for (const time of entries) {
-    saveRow('times', { ...time, invoiceId: invoice.id })
-  }
-  return invoice
 }
 
 const statistics = (
@@ -667,55 +599,19 @@ export const handlers: HttpHandler[] = [
   })),
 
   // Profile.
-  route('get', '/user/tracking-workers', ({ db, me, meId }) => {
-    const listed = [
-      ...new Set(
-        db.projects
-          .filter((project) => project.ownerId === meId)
-          .flatMap((project) => project.workerIds),
-      ),
-    ]
-
-    return {
-      limited: !me.premium && listed.length > 2,
-      limit: 2,
-      workers: listed.map((id, index) => {
-        const worker = userOf(db, id)
-
-        return {
-          address: worker?.address ?? id,
-          name: worker?.name || null,
-          connected: true,
-          tracking: me.premium || index < 2,
-        }
-      }),
-    }
-  }),
+  route('get', '/user/tracking-workers', ({ db, meId }) =>
+    trackingWorkersOf(db, meId),
+  ),
   route('put', '/user/tracking-workers', ({ db, me, meId, body }) => {
-    const kept = (body.addresses ?? []) as string[]
-    const listed = [
-      ...new Set(
-        db.projects
-          .filter((project) => project.ownerId === meId)
-          .flatMap((project) => project.workerIds),
-      ),
-    ]
-
-    return {
-      limited: !me.premium && listed.length > 2,
-      limit: 2,
-      workers: listed.map((id) => {
-        const worker = userOf(db, id)
-        const address = worker?.address ?? id
-
-        return {
-          address,
-          name: worker?.name || null,
-          connected: true,
-          tracking: me.premium || kept.includes(address),
-        }
-      }),
+    const listed = listedWorkers(db, meId)
+    const kept = ((body.addresses ?? []) as string[]).map(
+      (address) => userByAddress(db, address)?.id ?? address,
+    )
+    if (kept.some((id) => !listed.includes(id))) {
+      fail(400, 'Everyone kept must be a contributor on your projects')
     }
+    saveRow('users', { ...me, keptWorkers: kept })
+    return trackingWorkersOf(db, meId)
   }),
   route('get', '/user/:id', ({ db, params }) => {
     const user = userOf(db, params.id)
@@ -813,7 +709,7 @@ export const handlers: HttpHandler[] = [
   }),
   route('get', '/project/:id/stats/:period', ({ db, meId, params }) => {
     const project = projectOf(db, params.id)
-    if (!project || !isViewer(db, project, meId)) {
+    if (!project || !accessOn(db, project, meId).reads) {
       fail(403, 'Access denied')
     }
     const days = { '7D': 7, '1M': 30, '1Y': 365 }[params.period] ?? 30
@@ -824,7 +720,7 @@ export const handlers: HttpHandler[] = [
         continue
       }
       // A worker reads their own; the owner and viewers what is published.
-      const shared = isOwner(project!, meId) || !isWorker(db, project!, meId)
+      const shared = accessOn(db, project!, meId).lists !== 'own'
       if (time.userId !== meId && !(shared && isPublished(time, project!))) {
         continue
       }
@@ -845,7 +741,7 @@ export const handlers: HttpHandler[] = [
   route('post', '/time/search', searchTimes),
   route('get', '/time/totals/:id/project', ({ db, meId, params }) => {
     const project = projectOf(db, params.id)
-    if (!project || !isViewer(db, project, meId)) {
+    if (!project || !accessOn(db, project, meId).reads) {
       fail(403, 'Access denied')
     }
     const minutes = (value: unknown) =>
@@ -878,7 +774,7 @@ export const handlers: HttpHandler[] = [
       fail(404, 'Time not found')
     }
     if ('note' in body && (body.note ?? '') !== (time.note ?? '')) {
-      keepInvoiced([time])
+      keepInvoiced(db, [time])
     }
     return shapeTime(
       db,
@@ -893,7 +789,7 @@ export const handlers: HttpHandler[] = [
   }),
   route('delete', '/time', ({ db, meId, body }) => {
     const rows = editableTimes(db, meId, body.ids)
-    keepInvoiced(rows)
+    keepInvoiced(db, rows)
     removeRows(
       'times',
       rows.map((t) => t.id),
@@ -910,7 +806,7 @@ export const handlers: HttpHandler[] = [
   ),
   route('delete', '/time/screenshots', ({ db, meId, body }) => {
     const rows = editableTimes(db, meId, body.ids)
-    keepInvoiced(rows)
+    keepInvoiced(db, rows)
     for (const time of rows) {
       saveRow('times', { ...time, screenshot: null })
     }
@@ -918,7 +814,7 @@ export const handlers: HttpHandler[] = [
   }),
   route('delete', '/time/locations', ({ db, meId, body }) => {
     const rows = editableTimes(db, meId, body.ids)
-    keepInvoiced(rows)
+    keepInvoiced(db, rows)
     for (const time of rows) {
       saveRow('times', {
         ...time,
@@ -931,7 +827,7 @@ export const handlers: HttpHandler[] = [
   }),
   route('delete', '/time/processes', ({ db, meId, body }) => {
     const rows = editableTimes(db, meId, body.ids)
-    keepInvoiced(rows)
+    keepInvoiced(db, rows)
     for (const time of rows) {
       saveRow('times', { ...time, apps: [] })
     }
@@ -984,7 +880,7 @@ export const handlers: HttpHandler[] = [
   }),
   route('post', '/invoice/project/:projectId', ({ db, meId, params, body }) => {
     const project = projectOf(db, params.projectId)
-    if (!project || !isWorker(db, project, meId)) {
+    if (!project || !accessOn(db, project, meId).works) {
       fail(403, 'Access denied')
     }
     const invoice = issueInvoice(
@@ -1026,9 +922,9 @@ export const handlers: HttpHandler[] = [
   route('post', '/agent-tracking/search', ({ db, meId, body }) => {
     const projects = body.projectId
       ? [projectOf(db, String(body.projectId))].filter((p): p is MockProject =>
-          Boolean(p && isWorker(db, p, meId)),
+          Boolean(p && accessOn(db, p, meId).works),
         )
-      : db.projects.filter((p) => !p.deletedAt && isWorker(db, p, meId))
+      : db.projects.filter((p) => !p.deletedAt && accessOn(db, p, meId).works)
     if (body.projectId && projects.length === 0) {
       fail(403, 'Forbidden')
     }
@@ -1153,7 +1049,7 @@ export const handlers: HttpHandler[] = [
   route('get', '/agents', ({ db, meId }) => ownAgents(db, meId)),
   route('put', '/project/:id/agents/:agentId', ({ db, meId, params, body }) => {
     const project = projectOf(db, params.id)
-    if (!project || !isWorker(db, project, meId)) {
+    if (!project || !accessOn(db, project, meId).works) {
       fail(403, 'Access denied')
     }
     // The reader's own: one their runs imply, or one they set up by hand.

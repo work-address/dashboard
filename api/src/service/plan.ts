@@ -1,3 +1,9 @@
+import {
+  accessOf,
+  canonicalAddress,
+  roleOf,
+  trackingWorkers,
+} from '@work-address/statistics-core'
 import { Effect } from 'effect'
 import { inject, injectable } from 'inversify'
 import moment from 'moment'
@@ -70,17 +76,21 @@ export class Plan {
 
   /** Whether this person's new time on the project is accepted today. */
   public async mayTrack(project: Project, user: User): Promise<boolean> {
-    if (project.isOwner(user)) return true
-
-    const address = AccountAddress.toCanonical(user.address ?? '')
-    const worker = (project.workerAddresses ?? []).some((listed) =>
-      AccountAddress.isSame(listed, address),
+    // The lists say who could; the plan says which workers may today. On
+    // Premium that is everyone, which needs no read of the seats.
+    const role = roleOf(
+      project.isOwner(user),
+      { workers: project.workerAddresses, viewers: project.viewerAddresses },
+      user.address ?? '',
     )
+    const planTracks =
+      role === 'worker' &&
+      (this.entitlement.isPremium(project.user) ||
+        (await this.tracking(project.user)).has(
+          canonicalAddress(user.address ?? ''),
+        ))
 
-    if (!worker) return false
-    if (this.entitlement.isPremium(project.user)) return true
-
-    return (await this.tracking(project.user)).has(address)
+    return accessOf(role, planTracks).tracks
   }
 
   /**
@@ -164,7 +174,7 @@ export class Plan {
         address: accounts.get(address)?.address ?? address,
         name: accounts.get(address)?.name ?? null,
         connected: accounts.has(address),
-        tracking: premium || tracking.has(address),
+        tracking: tracking.has(address),
       })),
     }
   }
@@ -190,21 +200,15 @@ export class Plan {
   }
 
   /**
-   * The workers an owner with no plan keeps tracking with: their choice, topped
-   * up from the first listed until it reaches the free limit, so a lapse never
-   * leaves a worker who has been kept with nothing to do but wait for a choice.
+   * The workers the owner's plan lets record today: everyone on Premium,
+   * otherwise their choice topped up from the first listed until it reaches
+   * the free limit, so a lapse never leaves a worker who has been kept with
+   * nothing to do but wait for a choice.
    */
   private async tracking(owner: User): Promise<Set<string>> {
-    const listed = await this.seats.listed(owner.id)
-
-    if (listed.length <= FREE_PLAN_WORKERS) return new Set(listed)
-
-    const chosen = (owner.keptWorkers ?? [])
-      .map((address) => AccountAddress.toCanonical(address))
-      .filter((address) => listed.includes(address))
-
-    return new Set(
-      [...new Set([...chosen, ...listed])].slice(0, FREE_PLAN_WORKERS),
-    )
+    return trackingWorkers(await this.seats.listed(owner.id), {
+      premium: this.entitlement.isPremium(owner),
+      kept: owner.keptWorkers,
+    })
   }
 }

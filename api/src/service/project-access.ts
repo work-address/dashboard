@@ -1,3 +1,12 @@
+import {
+  DEFAULT_REVIEW_WINDOW_HOURS,
+  detailPendingReview,
+  published,
+  reviewEnded,
+  roleOf,
+  seesDetail,
+  works,
+} from '@work-address/statistics-core'
 import { inject, injectable } from 'inversify'
 import { Brackets, ObjectLiteral, SelectQueryBuilder } from 'typeorm'
 
@@ -15,12 +24,12 @@ export interface IAccessAliases {
   owner: string
 }
 
-const DEFAULT_REVIEW_WINDOW_HOURS = 24
-
 /**
  * Who may do what to a project and its entries (SPEC.md, "Who can see what"),
  * answered both per row and as a query filter so the two cannot disagree. The
- * test matrix in test/service/project-access.test.ts holds them to that.
+ * test matrix in test/service/project-access.test.ts holds them to that. The
+ * per-row rules are the shared core's (`@work-address/statistics-core`),
+ * which the web demo's mock calls too; the SQL forms here must agree with it.
  */
 @injectable()
 export class ProjectAccess {
@@ -33,17 +42,19 @@ export class ProjectAccess {
    * they recorded. Only new tracking is limited, by `Plan.mayTrack`.
    */
   public role(project: Project, user: User): ProjectRole | null {
-    if (project.isOwner(user)) return 'owner'
-    if (this.isListed(project.workerAddresses, user)) return 'worker'
-    if (this.isListed(project.viewerAddresses, user)) return 'viewer'
-    return null
+    return roleOf(
+      project.isOwner(user),
+      {
+        workers: project.workerAddresses,
+        viewers: project.viewerAddresses,
+      },
+      user.address ?? '',
+    )
   }
 
   /** Whether this person works on the project, so may invoice their time. */
   public canWork(project: Project, user: User): boolean {
-    const role = this.role(project, user)
-
-    return role === 'owner' || role === 'worker'
+    return works(this.role(project, user))
   }
 
   /** `role`, as a filter: the projects this person has at least `atLeast` on. */
@@ -113,18 +124,12 @@ export class ProjectAccess {
     reviewWindowHours: number | null | undefined,
     now = Date.now(),
   ): boolean {
-    const hours = reviewWindowHours ?? DEFAULT_REVIEW_WINDOW_HOURS
-
-    return new Date(toAt).getTime() + hours * 3600_000 <= now
+    return reviewEnded(toAt, reviewWindowHours, now)
   }
 
   /** Whether an entry's detail has reached its owner. */
   public published(time: Time, now = Date.now()): boolean {
-    return Boolean(
-      time.publishedAt ||
-        time.invoiceId ||
-        this.reviewEnded(time.toAt, time.project?.reviewWindowHours, now),
-    )
+    return published(time, time.project, now)
   }
 
   public publishedSql(): string {
@@ -133,9 +138,11 @@ export class ProjectAccess {
   }
 
   public canSeeDetail(time: Time, user: User, now = Date.now()): boolean {
-    return (
-      time.user?.id === user.id ||
-      (time.project?.user?.id === user.id && this.published(time, now))
+    return seesDetail(
+      ProjectAccess.row(time),
+      ProjectAccess.of(time),
+      user.id,
+      now,
     )
   }
 
@@ -166,8 +173,11 @@ export class ProjectAccess {
       time.apps = undefined
       time.appsReason = null
       time.locations = undefined
-      time.detailPendingReview =
-        time.project?.user?.id === user.id && !this.published(time)
+      time.detailPendingReview = detailPendingReview(
+        time,
+        ProjectAccess.of(time),
+        user.id,
+      )
     }
     // Location is kept as long as the screenshot, and goes the same way.
     const limit = this.plan.screenshotLimitDays()
@@ -184,12 +194,24 @@ export class ProjectAccess {
     return time
   }
 
-  private isListed(addresses: string[] | undefined, user: User): boolean {
-    const target = AccountAddress.toCanonical(user.address ?? '')
+  /** An entry as the core reads it. */
+  private static row(time: Time) {
+    return {
+      authorId: time.user?.id,
+      toAt: time.toAt,
+      publishedAt: time.publishedAt,
+      invoiceId: time.invoiceId,
+    }
+  }
 
-    return (addresses ?? []).some(
-      (address) => AccountAddress.toCanonical(address) === target,
-    )
+  /** An entry's project as the core reads it. */
+  private static of(time: Time) {
+    return time.project
+      ? {
+          ownerId: time.project.user?.id,
+          reviewWindowHours: time.project.reviewWindowHours,
+        }
+      : null
   }
 
   private onList(project: string, list: string): string {

@@ -1,9 +1,9 @@
-/** What a reader is on a project: the API's ProjectAccess.role, or the mock's. */
+import { works } from './access.js'
+
+/** What a reader is on a project: `roleOf` in access.ts, on either side. */
 export type ReaderRole = 'owner' | 'worker' | 'viewer' | null
 
 export type RoleOf<T> = (project: T) => ReaderRole
-
-const works = (role: ReaderRole) => role === 'owner' || role === 'worker'
 
 /**
  * "All projects", narrowed to the ones the people filter can apply to, so an
@@ -38,7 +38,7 @@ export function refusesQuery<T>(
     (query.userIds?.length &&
       notOwned &&
       (someViewed || query.userIds.some((id) => id !== meId))) ||
-    (query.invoiceId && someViewed),
+      (query.invoiceId && someViewed),
   )
 }
 

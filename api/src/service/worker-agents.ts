@@ -1,3 +1,5 @@
+import { attachmentOf } from '@work-address/statistics-core'
+
 import {
   AGENT_PRODUCT_NAMES,
   AgentAttachment,
@@ -43,9 +45,7 @@ export class WorkerAgents {
     workerId: string,
     agentId: string,
   ): AgentAttachment | undefined {
-    return attachments.find(
-      (a) => a.agentId === agentId && a.workerId === workerId,
-    )
+    return attachmentOf(attachments, workerId, agentId)
   }
 
   /** New runs land only on an agent that is still the worker's and still attached. */

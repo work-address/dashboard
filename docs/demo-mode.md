@@ -23,6 +23,7 @@ Related documents: [dashboard-rework.md](dashboard-rework.md) defines the statis
 | --- | --- | --- |
 | Data source | MSW in the browser over a seeded in-memory database | Seeding presets into the real API; a hybrid |
 | Statistics | The mock applies the API's scope, visibility and review-window rules; the pure rules live in `packages/statistics-core`, shared by API and mock | Simplified figures in the mock |
+| Domain rules | Role, Access, Published, detail, Invoiced, invoiceable and invoice lines come from `packages/statistics-core`, which the API calls too; the mock only reads its rows into them ([demo-contract.md](demo-contract.md)) | A second implementation in the mock, held to the API by scenarios alone |
 | Presets | Two independent choices: Role × Data world | A flat list of named presets |
 | Roles | Owner, Worker, Viewer, Mixed (owns some projects, works on others) | Pure roles only |
 | Session | Starts signed in as the chosen role; sign-out works; a wallet or Google sign-in signs in as the role, Google through a stand-in for its button that a plain build drops; `/connect` succeeds at once | Starting signed out |
@@ -38,7 +39,7 @@ A "Demo" pill in the bottom-left corner, above the app, expands into:
 1. **Role** - Owner, Worker, Viewer, Mixed.
 2. **Data** - the world (below), with Shuffle for Random.
 3. **Profile** - Fresh (wallet only) or Finished (name, title, company, bio, rate, skills, socials).
-4. **Plan** - Premium or Free. On Free the demo hides entries and runs older than 14 days that no invoice covers, as the API does, and Premium brings them back. Most of a world's older entries are invoiced, so it shows mainly in the agent runs.
+4. **Plan** - Premium or Free, for every owner in the world: the visitor's own account and the owners of the projects they work on or view, since the plan that counts is always the owner's. On Free the demo hides entries and runs older than 14 days that no invoice covers, as the API does, and Premium brings them back. Most of a world's older entries are invoiced, so it shows mainly in the agent runs. Free also limits recording to the first two contributors an owner listed; everyone keeps sight of their record and can invoice it.
 5. **Network** - speed (instant, fast, slow), failure (none, every request), and fail the next request.
 6. **Sign-in screen** - Google offered, wallet only, methods failed, script failed, and each way Google sign-in can be refused. Takes effect on a reload, without signing in.
 7. **Scenarios** - a worker uploads time now; an agent run finishes with a prompt; the owner marks an invoice paid; a review window passes.

@@ -60,11 +60,12 @@ export class ApiContractTest
     minutes: number,
   ): Promise<number> {
     const to = from.clone().add(minutes, 'minutes')
+    const runKey = randomUUID().split('-').join('')
     await getDataSource()
       .getRepository(TimeAgent)
       .save({
         ...run,
-        runKey: randomUUID().split('-').join(''),
+        runKey,
         userId: worker.id,
         projectId: project.id,
         surface: 'cli',
@@ -96,6 +97,15 @@ export class ApiContractTest
           schemaVersion: 1,
         },
       })
+    // Received an hour ago, so past the grace after which a run is finished
+    // and an invoice may bill it.
+    await getDataSource()
+      .getRepository(TimeAgent)
+      .createQueryBuilder()
+      .update()
+      .set({ updatedAt: () => `NOW() - INTERVAL '1 hour'` })
+      .where('"runKey" = :runKey', { runKey })
+      .execute()
     return from.valueOf()
   }
 

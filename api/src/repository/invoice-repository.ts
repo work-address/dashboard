@@ -1,15 +1,18 @@
+import {
+  agentLines,
+  humanLine,
+  invoiceAmount,
+} from '@work-address/statistics-core'
 import _ from 'lodash'
 import { inject, injectable } from 'inversify'
 
 import { Filter } from '@/service/filter'
-import { InvoiceLines } from '@/service/invoice-lines'
 import { ProjectAccess } from '@/service/project-access'
 import { Brackets, In } from 'typeorm'
 import { Time } from '@/entity/time'
 import { AgentRunRecord } from '@/service/agent-run-record'
 import { EInvoiceState, IInvoiceLine } from '@/model/invoice'
 import { InvoiceSnapshot } from '@/service/invoice-snapshot'
-import { AgentInvoiceLines } from '@/service/agent-invoice-lines'
 import { BadRequestError } from 'routing-controllers'
 
 import type {
@@ -179,7 +182,7 @@ export class InvoiceRepository extends AbstractRepositoryTemplate<Invoice> {
         }
         const lines: IInvoiceLine[] = []
         if (times.length) {
-          lines.push(InvoiceLines.human(times, Number(project.rateHour || 0)))
+          lines.push(humanLine(times, Number(project.rateHour || 0)))
         }
         if (runs.length) {
           const worker = await manager.findOneByOrFail(User, {
@@ -200,7 +203,7 @@ export class InvoiceRepository extends AbstractRepositoryTemplate<Invoice> {
             })
             .getMany()
           lines.push(
-            ...AgentInvoiceLines.build(
+            ...agentLines(
               runs,
               worker.agents ?? [],
               project.agentAttachments ?? [],
@@ -211,10 +214,7 @@ export class InvoiceRepository extends AbstractRepositoryTemplate<Invoice> {
           )
         }
         invoice.lines = lines
-        invoice.amountCents = lines.reduce(
-          (sum, line) => sum + line.amountCents,
-          0,
-        )
+        invoice.amountCents = invoiceAmount(lines)
         const saved = await manager.save(Invoice, invoice)
         if (times.length)
           await manager.update(

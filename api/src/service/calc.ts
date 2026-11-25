@@ -1,3 +1,5 @@
+import { spanMinutes } from '@work-address/statistics-core'
+
 export class Calc {
   /**
    * The interval the desktop tracker samples on: one Time row stands for one
@@ -16,15 +18,6 @@ export class Calc {
    * correctly together. A backwards entry counts as nothing.
    */
   public static spanMinutes(times: { fromAt: Date; toAt: Date }[]): number {
-    return times.reduce(
-      (total, time) =>
-        total +
-        Math.max(
-          0,
-          (new Date(time.toAt).getTime() - new Date(time.fromAt).getTime()) /
-            60000,
-        ),
-      0,
-    )
+    return spanMinutes(times)
   }
 }

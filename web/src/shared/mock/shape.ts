@@ -1,11 +1,24 @@
 /**
- * Who may see what, and the rows as the API sends them. The rules follow the
- * API: `Project.isOwner/isWorker/isViewer` (collaborators count only while the
- * owner is premium) and `TimeVisibility` (another worker's detail reaches the
- * owner after their review window; viewers never get it). Which entries a
- * reader may list follows `ProjectAccess.filterEntries`.
+ * Who may see what, and the rows as the API sends them. Every rule is the
+ * shared core's (`@work-address/statistics-core`), the one the API calls too:
+ * this file only reads the demo's rows into it. Role reads the lists alone;
+ * Access adds the owner's plan, which limits only who may record. Detail
+ * reaches the owner once published; viewers never get it.
  */
-import { spanMinutes } from './db'
+import {
+  accessOf,
+  canonicalAddress,
+  detailPendingReview,
+  invoiced,
+  listsRow,
+  published,
+  roleOf as coreRoleOf,
+  seesDetail,
+  trackingWorkers,
+  type Access,
+  type ReaderRole,
+} from '@work-address/statistics-core'
+
 import { demoScreenshots } from './images'
 
 import type {
@@ -16,8 +29,6 @@ import type {
   MockTime,
   MockUser,
 } from './db'
-
-const HOUR_MS = 3_600_000
 
 export const userOf = (db: Db, id: string) =>
   db.users.find((user) => user.id === id)
@@ -31,26 +42,43 @@ export const ownerPremium = (db: Db, project: MockProject) =>
 export const isOwner = (project: MockProject, userId: string) =>
   project.ownerId === userId
 
-export const isWorker = (db: Db, project: MockProject, userId: string) =>
-  isOwner(project, userId) ||
-  (project.workerIds.includes(userId) && ownerPremium(db, project))
-
 /** What the lists say, whatever the owner's plan: `ProjectAccess.role`. */
-export const roleOf = (
+export const roleOf = (project: MockProject, userId: string): ReaderRole =>
+  coreRoleOf(
+    isOwner(project, userId),
+    { workers: project.workerIds, viewers: project.viewerIds },
+    userId,
+  )
+
+/** Everyone on the owner's worker lists, in the order they were listed. */
+export const listedWorkers = (db: Db, ownerId: string) => [
+  ...new Set(
+    db.projects
+      .filter((project) => project.ownerId === ownerId && !project.deletedAt)
+      .flatMap((project) => project.workerIds),
+  ),
+]
+
+/** The workers the owner's plan lets record today: `Plan.tracking`. */
+export const trackingOf = (db: Db, ownerId: string) => {
+  const owner = userOf(db, ownerId)
+
+  return trackingWorkers(listedWorkers(db, ownerId), {
+    premium: owner?.premium ?? false,
+    kept: owner?.keptWorkers,
+  })
+}
+
+/** What the person's role grants them on the project today. */
+export const accessOn = (
+  db: Db,
   project: MockProject,
   userId: string,
-): 'owner' | 'worker' | 'viewer' | null =>
-  isOwner(project, userId)
-    ? 'owner'
-    : project.workerIds.includes(userId)
-      ? 'worker'
-      : project.viewerIds.includes(userId)
-        ? 'viewer'
-        : null
-
-export const isViewer = (db: Db, project: MockProject, userId: string) =>
-  isWorker(db, project, userId) ||
-  (project.viewerIds.includes(userId) && ownerPremium(db, project))
+): Access =>
+  accessOf(
+    roleOf(project, userId),
+    trackingOf(db, project.ownerId).has(canonicalAddress(userId)),
+  )
 
 /**
  * The entries a reader may list: an owner everyone's, a worker their own, a
@@ -62,35 +90,49 @@ export const canListEntry = (
   userId: string,
 ): boolean => {
   const project = projectOf(db, time.projectId)
-  const role = project ? roleOf(project, userId) : null
 
-  return role === 'owner' || (role === 'worker' && time.userId === userId)
+  return Boolean(
+    project && listsRow(roleOf(project, userId), time.userId, userId),
+  )
 }
 
 /** Every live project the user owns, works on or views. */
 export const visibleProjects = (db: Db, userId: string) =>
   db.projects.filter(
-    (project) => !project.deletedAt && isViewer(db, project, userId),
+    (project) => !project.deletedAt && roleOf(project, userId) !== null,
   )
+
+/** An entry as the core reads it: the demo calls its author `userId`. */
+const entryRow = (time: MockTime) => ({ ...time, authorId: time.userId })
 
 /** Published by the author, invoiced, or past the project's review window. */
 export const isPublished = (
   time: MockTime,
   project: MockProject,
   now = Date.now(),
-) =>
-  Boolean(
-    time.publishedAt ||
-      time.invoiceId ||
-      Date.parse(time.toAt) + project.reviewWindowHours * HOUR_MS <= now,
-  )
+) => published(time, project, now)
 
 /**
- * Invoiced (GLOSSARY.md), as the demo keeps it: an entry is on an invoice
- * until that invoice is rejected, which takes its `invoiceId` away.
+ * Invoiced (GLOSSARY.md). The demo's invoices all freeze their lines, so
+ * only the invoice an entry is billed on can cover it.
  */
-export const isInvoiced = (time: Pick<MockTime, 'invoiceId'>) =>
-  Boolean(time.invoiceId)
+export const isInvoiced = (db: Db, time: MockTime) => {
+  const invoice = time.invoiceId
+    ? db.invoices.find((row) => row.id === time.invoiceId)
+    : undefined
+
+  return invoiced(entryRow(time), invoice ? [coveringOf(invoice)] : [])
+}
+
+const coveringOf = (invoice: MockInvoice) => ({
+  id: invoice.id,
+  projectId: invoice.projectId,
+  authorId: invoice.userId,
+  rejected: invoice.state === 'REJECTED',
+  legacy: false,
+  fromAt: invoice.fromAt,
+  toAt: invoice.toAt,
+})
 
 /**
  * The demo's agent is the product a person's runs used (team.ts): this is the
@@ -105,9 +147,7 @@ export const hasDetail = (
   project: MockProject,
   userId: string,
   now = Date.now(),
-) =>
-  time.userId === userId ||
-  (project.ownerId === userId && isPublished(time, project, now))
+) => seesDetail(entryRow(time), project, userId, now)
 
 export const shapeUser = (user: MockUser) => ({
   ...user,
@@ -136,13 +176,13 @@ const shapeProjectCore = (db: Db, project: MockProject) => {
 
 export const shapeProject = (db: Db, project: MockProject, meId: string) => {
   const { rateHour, ...core } = shapeProjectCore(db, project)
-  const role = roleOf(project, meId)
+  const access = accessOn(db, project, meId)
 
   return {
     ...core,
     // A viewer gets time and no money.
-    ...(role === 'viewer' ? {} : { rateHour }),
-    role,
+    ...(access.seesMoney ? { rateHour } : {}),
+    role: access.role,
     workers: project.workerIds
       .map((id) => userOf(db, id))
       .filter(Boolean)
@@ -152,7 +192,7 @@ export const shapeProject = (db: Db, project: MockProject, meId: string) => {
       .filter(Boolean)
       .map((user) => shapeUser(user!)),
     agents: [],
-    canTrack: isWorker(db, project, meId),
+    canTrack: access.tracks,
   }
 }
 
@@ -168,7 +208,7 @@ export const shapeTime = (
   const { projectId: _p, userId: _u, invoiceId: _i, screenshot, ...rest } = time
   const base = {
     ...rest,
-    isInvoiced: isInvoiced(time),
+    isInvoiced: isInvoiced(db, time),
     project: shapeProjectCore(db, project),
     user: author ? shapeUser(author) : undefined,
     screenshot: screenshot === null ? undefined : demoScreenshots()[screenshot],
@@ -191,27 +231,15 @@ export const shapeTime = (
     processes: null,
     apps: undefined,
     locations: undefined,
-    detailPendingReview:
-      project.ownerId === meId && !isPublished(time, project, now),
+    detailPendingReview: detailPendingReview(time, project, meId, now),
   }
 }
 
-const invoiceMinutes = (db: Db, invoice: MockInvoice) => {
-  const entries = db.times.filter((time) => invoice.timeIds.includes(time.id))
-  return {
-    entries,
-    minutes: spanMinutes(entries),
-    // Minutes with input: the desktop's alone, as the API counts them.
-    active: entries
-      .filter((e) => e.source === 'desktop')
-      .reduce((sum, e) => sum + (e.minutesActive ?? 0), 0),
-    manual: spanMinutes(
-      entries.filter((e) => e.source === 'manual' || e.source === 'web'),
-    ),
-    mobile: spanMinutes(entries.filter((e) => e.source === 'mobile')),
-  }
-}
-
+/**
+ * An invoice as the API answers it: its frozen lines, and on the invoice page
+ * the entries it bills with their roll-up. Money and minutes come from the
+ * human line, because that is what was charged (`InvoiceManager.reportFor`).
+ */
 export const shapeInvoice = (
   db: Db,
   invoice: MockInvoice,
@@ -222,13 +250,9 @@ export const shapeInvoice = (
     projectOf(db, invoice.projectId) ??
     db.projects.find((p) => p.id === invoice.projectId)!
   const author = userOf(db, invoice.userId)
-  const { entries, minutes, active, manual, mobile } = invoiceMinutes(
-    db,
-    invoice,
-  )
-  const billed =
-    minutes ||
-    Math.round((invoice.amountCents * 60) / Math.max(1, invoice.rateHourCents))
+  // Absent on an invoice saved before the demo froze lines, until the day's
+  // edits are dropped at midnight.
+  const lines = invoice.lines ?? []
   const shaped = {
     id: invoice.id,
     createdAt: invoice.createdAt,
@@ -239,20 +263,7 @@ export const shapeInvoice = (
     toAt: invoice.toAt,
     amountCents: invoice.amountCents,
     state: invoice.state,
-    lines: [
-      {
-        kind: 'human',
-        name: 'Human time',
-        basis: 'tracked',
-        minutes: billed,
-        amountCents: invoice.amountCents,
-        rateChanges: [],
-        activeMinutes: active,
-        manualMinutes: manual,
-        ...(mobile ? { mobileMinutes: mobile } : {}),
-        rateHourCents: invoice.rateHourCents,
-      },
-    ],
+    lines,
     rejectionReason: invoice.rejectionReason,
     rejectedAt: invoice.rejectedAt,
     paidAt: invoice.paidAt,
@@ -260,8 +271,11 @@ export const shapeInvoice = (
   if (!full) {
     return shaped
   }
+  const entries = db.times.filter((time) => invoice.timeIds.includes(time.id))
   const sum = (key: 'keyboardKeys' | 'mouseKeys' | 'mouseDistance') =>
     entries.reduce((total, e) => total + (e[key] ?? 0), 0)
+  const human = lines.find((line) => line.kind === 'human')
+  const minutes = human?.minutes ?? 0
   return {
     ...shaped,
     time: entries.map((entry) => {
@@ -274,12 +288,16 @@ export const shapeInvoice = (
       return rest
     }),
     report: {
-      rateHour: invoice.rateHourCents / 100,
+      rateHour: human
+        ? human.rateHourCents === null
+          ? null
+          : human.rateHourCents / 100
+        : 0,
       rateTotal: invoice.amountCents / 100,
-      minutes: billed,
-      minutesActive: active,
-      minutesPaid: invoice.state === 'PAID' ? billed : 0,
-      minutesUnpaid: invoice.state === 'PAID' ? 0 : billed,
+      minutes,
+      minutesActive: human?.activeMinutes ?? 0,
+      minutesPaid: invoice.state === 'PAID' ? minutes : 0,
+      minutesUnpaid: invoice.state === 'Requested' ? minutes : 0,
       keyboardKeys: sum('keyboardKeys'),
       mouseKeys: sum('mouseKeys'),
       mouseDistance: sum('mouseDistance'),
@@ -298,12 +316,14 @@ export const shapeRun = (
   now = Date.now(),
 ) => {
   const project = projectOf(db, run.projectId)
-  const window = (project?.reviewWindowHours ?? 24) * HOUR_MS
+  // Held as an entry's detail is: released by its author, billed, or past review.
   const held =
     run.userId !== meId &&
-    !run.invoiceId &&
-    !run.released &&
-    Date.parse(run.toAt) + window > now
+    !published(
+      { ...run, publishedAt: run.released ? run.toAt : null },
+      project,
+      now,
+    )
   // The demo's agent is the product a person's runs used (team.ts), and a
   // quarter of its runs came from a server: the run key says which, so the
   // seed's other data stays as it was.

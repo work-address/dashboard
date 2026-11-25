@@ -2,53 +2,72 @@
  * The Team page, as `TeamManager` answers it. The demo has no agent list, so an
  * agent here is a product a person's runs used: its id is `userId:product`.
  */
-import { isOwner, isWorker, projectOf, userOf, visibleProjects } from './shape'
+import {
+  accessOn,
+  agentIdOf,
+  isOwner,
+  projectOf,
+  userOf,
+  visibleProjects,
+} from './shape'
 
 import type { Db, MockProject } from './db'
 
-/** Agents set up by hand are attached where they have a rate. */
-const createdOn = (db: Db, project: MockProject, userId: string) =>
-  db.agents
+/**
+ * The agents attached on a project, as `Project.agentAttachments` holds them:
+ * every agent its people's runs imply, at the rate set for it or none, and
+ * the agents set up by hand where they have a rate. Billing reads these too.
+ */
+export const attachmentsOn = (
+  rows: Pick<Db, 'runs' | 'agents'>,
+  project: MockProject,
+) => [
+  ...[
+    ...new Map(
+      rows.runs
+        .filter((run) => run.projectId === project.id)
+        .map((run) => [agentIdOf(run), run] as const),
+    ).values(),
+  ].map((run) => ({
+    agentId: agentIdOf(run),
+    workerId: run.userId,
+    name: run.product,
+    product: run.product,
+    rateHourCents: project.agentRates?.[agentIdOf(run)] ?? 0,
+    attachedAt: project.createdAt,
+    rateChanges: [],
+  })),
+  ...rows.agents
     .filter(
       (agent) =>
-        agent.userId === userId &&
-        !agent.removedAt &&
-        project.agentRates?.[agent.id] !== undefined,
+        !agent.removedAt && project.agentRates?.[agent.id] !== undefined,
     )
     .map((agent) => ({
-      id: agent.id,
+      agentId: agent.id,
+      workerId: agent.userId,
       name: agent.name,
       product: agent.product,
       rateHourCents: project.agentRates![agent.id],
       attachedAt: agent.createdAt,
+      rateChanges: [],
+    })),
+]
+
+const agentsOn = (db: Db, project: MockProject, userId: string) =>
+  attachmentsOn(db, project)
+    .filter((attachment) => attachment.workerId === userId)
+    .map((attachment) => ({
+      id: attachment.agentId,
+      name: attachment.name,
+      product: attachment.product,
+      rateHourCents: attachment.rateHourCents,
+      attachedAt: attachment.attachedAt,
       lastRateChange: null,
     }))
 
-const agentsOn = (db: Db, project: MockProject, userId: string) => [
-  ...[
-    ...new Set(
-      db.runs
-        .filter((run) => run.projectId === project.id && run.userId === userId)
-        .map((run) => run.product),
-    ),
-  ].map((product) => {
-    const id = `${userId}:${product}`
-
-    return {
-      id,
-      name: product,
-      product,
-      rateHourCents: project.agentRates?.[id] ?? 0,
-      attachedAt: project.createdAt,
-      lastRateChange: null,
-    }
-  }),
-  ...createdOn(db, project, userId),
-]
-
 export function teamOf(db: Db, meId: string) {
   const visible = visibleProjects(db, meId)
-  const worked = visible.filter((project) => isWorker(db, project, meId))
+  const worked = visible.filter((project) => accessOn(db, project, meId).works)
 
   const person = (
     project: MockProject,

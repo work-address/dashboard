@@ -4,7 +4,7 @@
  * - so the next read shows it - and says what happened and where to look.
  */
 
-import { isOwner, isWorker, projectOf, visibleProjects } from './shape'
+import { accessOn, isOwner, projectOf, visibleProjects } from './shape'
 import { demoDb, saveRow } from './store'
 
 import type { MockRun, MockTime } from './db'
@@ -83,7 +83,7 @@ export const DEMO_SCENARIOS: DemoScenario[] = [
     run: () => {
       const db = demoDb()
       const project = db.projects.find(
-        (p) => !p.deletedAt && p.trackAgents && isWorker(db, p, db.meId),
+        (p) => !p.deletedAt && p.trackAgents && accessOn(db, p, db.meId).tracks,
       )
       if (!project) {
         unavailable('You do not work on a project that tracks agents.')

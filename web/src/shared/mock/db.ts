@@ -7,11 +7,13 @@
  * to the start of today, so "This week" always has data, and every draw comes
  * from its own seeded faker.
  */
+import { billFor } from './bill'
 import { DEMO_SCREENSHOT_COUNT } from './images'
 import { seeded } from './random'
 
 import type { DemoSettings, DemoWorldId } from './settings'
 import type { Faker } from '@faker-js/faker'
+import type { InvoiceLine } from '@work-address/statistics-core'
 
 export type MockUser = {
   id: string
@@ -37,6 +39,8 @@ export type MockUser = {
   country: string | null
   roles: string[]
   premium: boolean
+  /** Who an owner past the free plan's workers keeps recording, by id. */
+  keptWorkers?: string[]
 }
 
 export type MockProject = {
@@ -99,15 +103,6 @@ export type MockLocation = {
   mock: boolean
 }
 
-/** Minutes an entry spans: its own times, not an assumed slot. */
-export const spanMinutes = (entries: Pick<MockTime, 'fromAt' | 'toAt'>[]) =>
-  entries.reduce(
-    (sum, entry) =>
-      sum +
-      Math.max(0, (Date.parse(entry.toAt) - Date.parse(entry.fromAt)) / 60_000),
-    0,
-  )
-
 export type MockInvoiceState = 'PAID' | 'Requested' | 'REJECTED'
 
 export type MockInvoice = {
@@ -119,7 +114,11 @@ export type MockInvoice = {
   fromAt: string
   toAt: string
   amountCents: number
-  rateHourCents: number
+  /**
+   * What it charges, frozen when it was raised. Absent only on an invoice
+   * saved before the demo froze lines, until the day's edits are dropped.
+   */
+  lines?: InvoiceLine[]
   state: MockInvoiceState
   rejectionReason: string | null
   rejectedAt: string | null
@@ -427,11 +426,13 @@ export function buildDb(settings: DemoSettings, now: number): Db {
     settings.profile === 'finished',
     settings.plan === 'premium',
   )
-  const people = (prefix: string, count: number) =>
+  const people = (prefix: string, count: number, premium = true) =>
     Array.from({ length: count }, (_, i) =>
-      makeUser(seeded(`${key}:${prefix}:${i}`), accountsSince, true, true),
+      makeUser(seeded(`${key}:${prefix}:${i}`), accountsSince, true, premium),
     )
-  const owners = people('owner', shape.owners)
+  // The plan that counts is always the owner's: the panel's sets the owners
+  // of the projects the visitor works on or views, as well as their own.
+  const owners = people('owner', shape.owners, settings.plan === 'premium')
   const workers = people('worker', shape.workers)
   const viewers = people('viewer', shape.viewers)
 
@@ -491,10 +492,12 @@ export function buildDb(settings: DemoSettings, now: number): Db {
     })
   }
 
+  attachRunAgents(projects, runs)
   const invoices = makeInvoices(
     seeded(`${key}:invoices:${dayKey}`),
     projects,
     times,
+    runs,
     today,
   )
 
@@ -792,17 +795,54 @@ function makeRun(
   }
 }
 
+/** What each agent is on its project at, by product, unless one is set. */
+const AGENT_RATE_CENTS: Record<string, number> = {
+  'claude-code': 1800,
+  codex: 1500,
+  openclaw: 1200,
+  hermes: 900,
+  'kimi-code': 600,
+}
+
+/**
+ * Every agent a run implies is on its project at a rate, so invoices bill its
+ * runs for money. Taken from the product, never drawn, so the seeded world
+ * stays as it was.
+ */
+function attachRunAgents(projects: MockProject[], runs: MockRun[]) {
+  for (const run of runs) {
+    const project = projects.find((p) => p.id === run.projectId)
+    const agentId = `${run.userId}:${run.product}`
+    if (project && project.agentRates?.[agentId] === undefined) {
+      project.agentRates = {
+        ...project.agentRates,
+        [agentId]: AGENT_RATE_CENTS[run.product] ?? 0,
+      }
+    }
+  }
+}
+
 /**
  * Invoices over weekly periods per project and person: paid from two weeks
  * back, requested for last week, and one rejected - so every state shows.
+ * Each bills its period as the API would: the entries in it, and a line for
+ * each agent whose runs started in it.
  */
 function makeInvoices(
   f: Faker,
   projects: MockProject[],
   times: MockTime[],
+  runs: MockRun[],
   today: number,
 ): MockInvoice[] {
   const invoices: MockInvoice[] = []
+  // Each invoice bills its issuer's runs on its project: grouped once, since a
+  // busy world has thousands.
+  const runsOf = new Map<string, MockRun[]>()
+  for (const run of runs) {
+    const key = `${run.projectId}:${run.userId}`
+    runsOf.set(key, [...(runsOf.get(key) ?? []), run])
+  }
   const byGroup = new Map<string, MockTime[]>()
   for (const time of times) {
     const age = Math.floor((today - Date.parse(time.fromAt)) / (7 * DAY_MS))
@@ -819,8 +859,6 @@ function makeInvoices(
     if (!project) {
       continue
     }
-    const rateHourCents = Math.round(Number(project.rateHour) * 100)
-    const minutes = spanMinutes(entries)
     const state: MockInvoiceState =
       !rejected && Number(age) === 1 && f.number.float() < 0.5
         ? 'REJECTED'
@@ -831,16 +869,33 @@ function makeInvoices(
       rejected = true
     }
     const createdAt = Date.parse(entries.at(-1)!.toAt) + DAY_MS
+    const bill = billFor(
+      {
+        times: entries,
+        runs: runsOf.get(`${projectId}:${userId}`) ?? [],
+        agents: [],
+      },
+      project,
+      userId,
+      {
+        from: Date.parse(entries[0].fromAt),
+        to: Date.parse(entries.at(-1)!.toAt),
+      },
+      createdAt,
+    )
+    if (!bill) {
+      continue
+    }
     const invoice: MockInvoice = {
       id: f.string.uuid(),
       createdAt: iso(createdAt),
       updatedAt: iso(createdAt),
       projectId,
       userId,
-      fromAt: entries[0].fromAt,
-      toAt: entries.at(-1)!.toAt,
-      amountCents: Math.round((minutes * rateHourCents) / 60),
-      rateHourCents,
+      fromAt: bill.fromAt,
+      toAt: bill.toAt,
+      amountCents: bill.amountCents,
+      lines: bill.lines,
       state,
       rejectionReason:
         state === 'REJECTED'
@@ -848,12 +903,13 @@ function makeInvoices(
           : null,
       rejectedAt: state === 'REJECTED' ? iso(createdAt + DAY_MS) : null,
       paidAt: state === 'PAID' ? iso(createdAt + 2 * DAY_MS) : null,
-      timeIds: state === 'REJECTED' ? [] : entries.map((e) => e.id),
+      timeIds: state === 'REJECTED' ? [] : bill.entries.map((e) => e.id),
     }
+    // A rejected invoice keeps the lines it charged and releases the rest.
     if (state !== 'REJECTED') {
-      for (const entry of entries) {
-        entry.invoiceId = invoice.id
-        entry.isPaid = state === 'PAID'
+      for (const billed of [...bill.entries, ...bill.runs]) {
+        billed.invoiceId = invoice.id
+        billed.isPaid = state === 'PAID'
       }
     }
     invoices.push(invoice)

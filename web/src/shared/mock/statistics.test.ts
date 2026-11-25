@@ -196,9 +196,13 @@ describe('demo hidden history', () => {
   })
 
   it('follows the project owner’s plan, not the reader’s', () => {
-    // The demo's other people are on Premium, so nothing a free worker reads
-    // on their projects is hidden.
-    for (const answer of answers(db('worker', 'typical', 'free'), QUERY)) {
+    // A free worker on Premium owners' projects: nothing they read is hidden.
+    const data = db('worker', 'typical', 'free')
+    for (const user of data.users) {
+      user.premium = user.id !== data.meId
+    }
+
+    for (const answer of answers(data, QUERY)) {
       expect(answer).not.toHaveProperty('hiddenBefore')
     }
   })
@@ -351,7 +355,10 @@ describe('demo visibility of detail', () => {
 
   it('holds another worker’s prompt until review', () => {
     const data = db('owner')
-    const run = data.runs.find((r) => r.userId !== data.meId && r.prompt)!
+    // One no invoice has billed: billing publishes a run as it does an entry.
+    const run = data.runs.find(
+      (r) => r.userId !== data.meId && r.prompt && !r.invoiceId,
+    )!
     const soon = Date.parse(run.toAt) + 60_000
 
     expect(shapeRun(data, run, data.meId, soon)).toMatchObject({

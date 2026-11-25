@@ -7,6 +7,7 @@ import {
   type ContractReader,
   type ContractRequest,
 } from '@work-address/api-contract'
+import { humanLine } from '@work-address/statistics-core'
 import { setupServer } from 'msw/node'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -144,7 +145,20 @@ const mock: ContractAdapter = {
       fromAt: new Date(Date.now() - 201 * HOUR).toISOString(),
       toAt: new Date(Date.now() - 200 * HOUR).toISOString(),
       amountCents: 3000,
-      rateHourCents: 6000,
+      // Half an hour at $60, as the API would have frozen it.
+      lines: [
+        humanLine(
+          [
+            {
+              fromAt: 0,
+              toAt: 30 * 60_000,
+              source: 'desktop',
+              minutesActive: 5,
+            },
+          ],
+          60,
+        ),
+      ],
       state: 'Requested',
       rejectionReason: null,
       rejectedAt: null,
@@ -298,11 +312,41 @@ const mock: ContractAdapter = {
   },
 }
 
+/**
+ * Scenarios the mock no longer runs, each with the core rule that decides it.
+ * The mock calls the shared core (`@work-address/statistics-core`) for these,
+ * which tests them once in packages/statistics-core/test, and another
+ * scenario here still holds the mock's wiring of the same rule. The API runs
+ * every scenario, since its SQL forms are not the core's.
+ */
+const COVERED_BY_CORE: Record<string, string> = {
+  'an author sees their own detail before review': 'seesDetail',
+  'the owner sees detail once the review window ends': 'seesDetail',
+  'a viewer lists no entries': 'listsRow',
+  'naming a person shows a viewer no entries either': 'listsRow',
+  'the owner lists everyone’s entries': 'listsRow',
+  'an outsider sees nothing': 'listsRow',
+  'a viewer cannot read an entry': 'listsRow',
+  'an invoice bills each unpaid entry’s own span in the period':
+    'invoiceable, humanLine',
+}
+
 describe('demo mock contract', () => {
   beforeAll(() => server.listen())
   afterAll(() => server.close())
 
+  it('leaves out only scenarios that exist', () => {
+    const names = new Set(CONTRACT_SCENARIOS.map((scenario) => scenario.name))
+
+    expect(
+      Object.keys(COVERED_BY_CORE).filter((name) => !names.has(name)),
+    ).toEqual([])
+  })
+
   for (const scenario of CONTRACT_SCENARIOS) {
+    if (scenario.name in COVERED_BY_CORE) {
+      continue
+    }
     it(scenario.name, async () => {
       expect(await runScenario(mock, scenario)).toBeUndefined()
     })

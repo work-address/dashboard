@@ -22,12 +22,12 @@ import {
 
 import { FREE_RETENTION_MS } from './kept-history'
 import {
+  accessOn,
   agentIdOf,
   hasDetail,
   isInvoiced,
   isOwner,
   isPublished,
-  isWorker,
   ownerPremium,
   projectOf,
   roleOf,
@@ -125,7 +125,7 @@ const scopeOf = (
   ...span,
   owners: new Set(projects.filter((p) => isOwner(p, meId)).map((p) => p.id)),
   viewers: new Set(
-    projects.filter((p) => !isWorker(db, p, meId)).map((p) => p.id),
+    projects.filter((p) => !accessOn(db, p, meId).works).map((p) => p.id),
   ),
   now,
 })
@@ -317,7 +317,7 @@ export function projectFigures(
       ),
     )
     const unpaid = Math.max(0, tracked - paid)
-    const invoiced = entries.filter(isInvoiced)
+    const invoiced = entries.filter((time) => isInvoiced(db, time))
     const rateHourCents = Math.round(Number(project.rateHour) * 100)
     const priced = (s: number) => Math.round((s * rateHourCents) / 3600)
     rows.push({

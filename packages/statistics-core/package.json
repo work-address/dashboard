@@ -1,7 +1,7 @@
 {
   "name": "@work-address/statistics-core",
   "version": "0.1.0",
-  "description": "Pure statistics rules shared by the Work Address API and the web demo",
+  "description": "Pure domain rules shared by the Work Address API and the web demo: role and access, entry and invoice rules, and statistics",
   "type": "module",
   "license": "MIT",
   "private": true,
