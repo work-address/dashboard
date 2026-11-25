@@ -176,12 +176,12 @@ export const TimeDialogAgents = ({ items, userId }: TimeDialogAgentsProps) => {
               )}
               <AgentRunTimeline summary={{ minutesByState, spans }} />
               <RunLink
-                to={`${routes.agents.build()}?${new URLSearchParams({
+                to={routes.agents.build({
                   from: toDay(new Date(run.fromAt)),
                   to: toDay(new Date(run.fromAt)),
-                  project: run.projectId,
+                  projectId: run.projectId,
                   run: run.runKey,
-                })}`}
+                })}
               >
                 {t('time.dialog.agents.openRun')}
               </RunLink>

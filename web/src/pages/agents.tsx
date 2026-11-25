@@ -13,15 +13,13 @@ import {
   type AgentRunNames,
   agentRunQuery,
   agentRunsQuery,
-  agentRunsSearch,
   AgentsFilters,
-  readAgentRunFilters,
+  fromAgentsAddress,
 } from '@/features/agents'
 import { $canSeeTeam, fetchTeam, teamQuery } from '@/features/team'
 import { routes } from '@/routes'
 import {
   Button,
-  DATE_RANGE_PRESETS,
   type DateRangePreset,
   PageHelmet,
   WorkspacePage,
@@ -69,17 +67,13 @@ export default function AgentsPage() {
   }, [fetchTeamEvent])
 
   const search = params.toString()
-  const filters = useMemo(
-    () => readAgentRunFilters(new URLSearchParams(search)),
+  const address = useMemo(
+    () => routes.agents.read(new URLSearchParams(search)),
     [search],
   )
-  const period = params.get('period')
-  const preset: DateRangePreset = (
-    DATE_RANGE_PRESETS as readonly string[]
-  ).includes(period ?? '')
-    ? (period as DateRangePreset)
-    : 'custom'
-  const runKey = params.get('run')
+  const filters = useMemo(() => fromAgentsAddress(address), [address])
+  const preset: DateRangePreset = address.period ?? 'custom'
+  const runKey = address.run ?? null
   const filterKey = JSON.stringify(filters)
 
   // New filters start from the first page again.
@@ -123,23 +117,19 @@ export default function AgentsPage() {
     next: Partial<AgentRunFilters>,
     nextPreset?: DateRangePreset,
   ) => {
-    const merged = { ...filters, ...next }
-    const query = new URLSearchParams(agentRunsSearch(merged))
     const kept = nextPreset ?? preset
-    if (kept !== 'custom') {
-      query.set('period', kept)
-    }
-    setParams(query)
+    setParams(
+      routes.agents.write({
+        ...filters,
+        ...next,
+        period: kept === 'custom' ? undefined : kept,
+      }),
+    )
   }
 
+  // Opening or closing a run keeps the filters, as the address has them.
   const setRun = (key: string | null) => {
-    const query = new URLSearchParams(params)
-    if (key) {
-      query.set('run', key)
-    } else {
-      query.delete('run')
-    }
-    setParams(query)
+    setParams(routes.agents.write({ ...address, run: key ?? undefined }))
   }
 
   if (!canSee) {

@@ -9,14 +9,47 @@ import {
   QuestionMarkCircledIcon,
 } from '@radix-ui/react-icons'
 
-import type { Route, IdRouteParams, NoChildRoutes, MappingRoute } from './types'
+import { withSearch } from './address'
+import {
+  readAgentsAddress,
+  writeAgentsAddress,
+  type AgentsAddress,
+} from './agents-address'
+import {
+  readDashboardAddress,
+  writeDashboardAddress,
+  type DashboardAddress,
+} from './dashboard-address'
+import {
+  readTimeAddress,
+  writeTimeAddress,
+  type TimeAddress,
+} from './time-address'
+
+import type {
+  Addressed,
+  Route,
+  IdRouteParams,
+  NoChildRoutes,
+  MappingRoute,
+} from './types'
 
 import { PeopleIcon } from '@/shared/icons'
 
-type MainRoutes = Route<'/', 'dashboard'> &
-  Route<'/time', 'time'> &
+// The pages that keep filters in their address own its shape: `build` takes
+// it, so a link into a page cannot spell a parameter the page does not read.
+type MainRoutes = Route<
+  '/',
+  'dashboard',
+  NoChildRoutes,
+  DashboardAddress | void
+> &
+  Addressed<'dashboard', DashboardAddress> &
+  Route<'/time', 'time', NoChildRoutes, TimeAddress | void> &
+  Addressed<'time', TimeAddress> &
   Route<'/team', 'team'> &
-  Route<'/agents', 'agents'> &
+  Route<'/agents', 'agents', NoChildRoutes, AgentsAddress | void> &
+  Addressed<'agents', AgentsAddress> &
   Route<'/sign-in', 'signIn'> &
   Route<'/profile/:id', 'profile', ProfileRoutes, IdRouteParams> &
   Route<'https://address.work/docs', 'docs'> &
@@ -69,7 +102,10 @@ type ProfileRoutes = Route<
 export const routes: MainRoutes = {
   dashboard: {
     schema: '/',
-    build: () => '/',
+    build: (address) =>
+      withSearch('/', writeDashboardAddress(address || undefined)),
+    read: readDashboardAddress,
+    write: writeDashboardAddress,
 
     desktopOrder: 0,
     mobileOrder: 0,
@@ -82,7 +118,10 @@ export const routes: MainRoutes = {
 
   time: {
     schema: '/time',
-    build: () => '/time',
+    build: (address) =>
+      withSearch('/time', writeTimeAddress(address || undefined)),
+    read: readTimeAddress,
+    write: writeTimeAddress,
 
     desktopOrder: 1,
     mobileOrder: 1,
@@ -108,7 +147,10 @@ export const routes: MainRoutes = {
 
   agents: {
     schema: '/agents',
-    build: () => '/agents',
+    build: (address) =>
+      withSearch('/agents', writeAgentsAddress(address || undefined)),
+    read: readAgentsAddress,
+    write: writeAgentsAddress,
 
     desktopOrder: 1.7,
     mobileOrder: 1.7,
@@ -303,3 +345,12 @@ export type { MainRoutes }
 export { returnPathFrom, returnState } from './return-path'
 
 export { type MappingRoute } from './types'
+
+export type {
+  AgentsAddress,
+  AgentRunMode,
+  AgentsPeriod,
+} from './agents-address'
+export type { DashboardAddress } from './dashboard-address'
+export type { TimeAddress, TimeRangeParam } from './time-address'
+export { SHARED_PARAMS } from './address'

@@ -65,16 +65,13 @@ export const DashboardDesktopSession = () => {
       return
     }
 
-    const search = new URLSearchParams({
-      from: format(session.fromAt, DAY_FORMAT),
-      to: format(session.toAt, DAY_FORMAT),
-    })
-
-    if (session.projectId) {
-      search.set('projects', session.projectId)
-    }
-
-    navigate(`${routes.time.build()}?${search.toString()}`)
+    navigate(
+      routes.time.build({
+        from: format(session.fromAt, DAY_FORMAT),
+        to: format(session.toAt, DAY_FORMAT),
+        projectId: session.projectId || undefined,
+      }),
+    )
   }
 
   return (

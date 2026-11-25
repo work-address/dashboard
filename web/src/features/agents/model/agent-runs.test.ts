@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  agentRunMode,
-  agentRunsSearch,
-  readAgentRunFilters,
-  type AgentRun,
-} from './agent-runs'
+import { agentRunMode, readAgentRunFilters, type AgentRun } from './agent-runs'
+
+import { routes } from '@/routes'
+
+const PROJECT = '0b6c6f6e-6b1a-4c3e-9a51-2f0b7c1d9e01'
+const PERSON = '5f2d1c3b-8e4a-4b7f-a0c9-6d1e2f3a4b5c'
 
 const now = new Date(2026, 10, 14, 12)
 
@@ -29,8 +29,8 @@ describe('readAgentRunFilters', () => {
       new URLSearchParams({
         from: '2026-11-01',
         to: '2026-11-02',
-        project: 'p',
-        person: 'u',
+        projects: PROJECT,
+        people: PERSON,
         agent: 'a',
         mode: 'fixed',
         status: 'failed',
@@ -41,8 +41,8 @@ describe('readAgentRunFilters', () => {
     expect(filters).toEqual({
       from: '2026-11-01',
       to: '2026-11-02',
-      projectId: 'p',
-      userId: 'u',
+      projectId: PROJECT,
+      userId: PERSON,
       agentId: 'a',
       mode: 'fixed',
       status: 'failed',
@@ -54,13 +54,15 @@ describe('readAgentRunFilters', () => {
   })
 })
 
-describe('agentRunsSearch', () => {
+describe('the agents address', () => {
   it('writes what readAgentRunFilters reads, and the run to open', () => {
-    const search = agentRunsSearch(
-      { from: '2026-11-01', to: '2026-11-02', agentId: 'a', mode: 'timer' },
-      'key',
-    )
-    const params = new URLSearchParams(search)
+    const params = routes.agents.write({
+      from: '2026-11-01',
+      to: '2026-11-02',
+      agentId: 'a',
+      mode: 'timer',
+      run: 'key',
+    })
     expect(params.get('run')).toBe('key')
     expect(readAgentRunFilters(params, now)).toMatchObject({
       from: '2026-11-01',
@@ -68,6 +70,15 @@ describe('agentRunsSearch', () => {
       agentId: 'a',
       mode: 'timer',
     })
+  })
+
+  it('still reads the singular project and person of older links', () => {
+    expect(
+      readAgentRunFilters(
+        new URLSearchParams({ project: PROJECT, person: PERSON }),
+        now,
+      ),
+    ).toMatchObject({ projectId: PROJECT, userId: PERSON })
   })
 })
 

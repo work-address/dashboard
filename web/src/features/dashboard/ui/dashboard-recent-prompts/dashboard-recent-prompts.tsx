@@ -103,12 +103,12 @@ export const DashboardRecentPrompts = () => {
               <Item
                 data-removable={removable || undefined}
                 // The run itself, among that day's runs on its project.
-                to={`${routes.agents.build()}?${new URLSearchParams({
+                to={routes.agents.build({
                   from: day,
                   to: day,
-                  project: run.projectId,
+                  projectId: run.projectId,
                   run: run.runKey,
-                })}`}
+                })}
               >
                 <Icon aria-hidden="true">
                   <AgentMark product={run.product} size={20} />
