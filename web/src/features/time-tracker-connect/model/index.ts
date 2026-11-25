@@ -139,11 +139,7 @@ export type { TimeTrackerConnectPhase } from './types'
 export { getTimeTrackerNonceStorageKey } from './types'
 
 export { buildTimeTrackerConnectView } from './view'
-export {
-  finishWebsiteSignIn,
-  leaveForWebsite,
-  parseWebsiteReturn,
-} from './website-return'
+export { parseWebsiteReturn, returnToWebsite } from './website-return'
 export {
   isPhoneClient,
   PHONE_APP_RETURN_URL,

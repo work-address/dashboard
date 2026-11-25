@@ -84,7 +84,7 @@ const WEBSITE_COPY_BY_SCREEN: typeof COPY_BY_SCREEN = {
     descriptionKey: 'connect.website.description.signingIn',
   },
   confirm: {
-    headingKey: 'connect.website.heading.confirm',
+    ...COPY_BY_SCREEN.confirm,
     descriptionKey: 'connect.website.description.confirm',
   },
   pairing: {
@@ -109,7 +109,7 @@ const WEBSITE_COPY_BY_SCREEN: typeof COPY_BY_SCREEN = {
 const PHONE_COPY_BY_SCREEN: typeof COPY_BY_SCREEN = {
   ...COPY_BY_SCREEN,
   confirm: {
-    headingKey: 'connect.phone.heading.confirm',
+    ...COPY_BY_SCREEN.confirm,
     descriptionKey: 'connect.phone.description.confirm',
   },
   connected: {

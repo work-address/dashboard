@@ -14,12 +14,11 @@ import {
   initTimeTrackerConnect,
   buildTimeTrackerConnectView,
   confirmTimeTrackerConnect,
-  finishWebsiteSignIn,
   isPhoneClient,
-  leaveForWebsite,
   parseWebsiteReturn,
   PHONE_APP_RETURN_URL,
   returnToPhoneApp,
+  returnToWebsite,
   resetTimeTrackerConnect,
   retryTimeTrackerConnect,
   timeTrackerConnectOpenedBy,
@@ -125,7 +124,7 @@ export default function ConnectPage() {
   // A website sign-in ends back on the website, not here.
   useEffect(() => {
     if (websiteReturn && showConnected) {
-      finishWebsiteSignIn(window, websiteReturn)
+      returnToWebsite(window, websiteReturn)
     }
   }, [websiteReturn, showConnected])
 
@@ -142,7 +141,7 @@ export default function ConnectPage() {
 
   const backToWebsite = () => {
     if (websiteReturn) {
-      leaveForWebsite(window, websiteReturn)
+      returnToWebsite(window, websiteReturn)
     }
   }
 

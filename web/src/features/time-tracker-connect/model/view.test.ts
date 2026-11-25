@@ -36,7 +36,7 @@ describe('pairing page states', () => {
     expect(view.showWalletProviders).toBe(false)
   })
 
-  it("asks a signed-in reader to connect, in each opener's words", () => {
+  it('uses a shared approval heading and explains who started the request', () => {
     const asked = {
       ...defaults,
       phase: 'awaiting_pair' as const,
@@ -50,10 +50,12 @@ describe('pairing page states', () => {
     expect(tracker.confirmKey).toBe('connect.confirm')
 
     const phone = buildTimeTrackerConnectView({ ...asked, fromPhone: true })
-    expect(phone.headingKey).toBe('connect.phone.heading.confirm')
+    expect(phone.headingKey).toBe(tracker.headingKey)
+    expect(phone.descriptionKey).toBe('connect.phone.description.confirm')
 
     const website = buildTimeTrackerConnectView({ ...asked, fromWebsite: true })
-    expect(website.headingKey).toBe('connect.website.heading.confirm')
+    expect(website.headingKey).toBe(tracker.headingKey)
+    expect(website.descriptionKey).toBe('connect.website.description.confirm')
     expect(website.confirmKey).toBe('connect.website.confirm')
 
     // signed in on the page, before the model has moved on: asked, not paired

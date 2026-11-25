@@ -2,9 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   CLOSE_GRACE_MS,
-  finishWebsiteSignIn,
-  leaveForWebsite,
   parseWebsiteReturn,
+  returnToWebsite,
 } from './website-return'
 
 const ALLOWED = ['https://address.work', 'http://localhost:3000']
@@ -46,11 +45,11 @@ const fakeWindow = (opener: { closed: boolean } | null) => ({
   setTimeout: vi.fn((handler: () => void, _timeout: number) => handler),
 })
 
-describe('finishWebsiteSignIn', () => {
+describe('returnToWebsite', () => {
   it('closes the tab when the website tab is still open', () => {
     const win = fakeWindow({ closed: false })
 
-    finishWebsiteSignIn(win, RETURN_TO)
+    returnToWebsite(win, RETURN_TO)
 
     expect(win.close).toHaveBeenCalledOnce()
     expect(win.location.replace).not.toHaveBeenCalled()
@@ -59,54 +58,33 @@ describe('finishWebsiteSignIn', () => {
   it('goes to the return page when the website tab has been closed', () => {
     const win = fakeWindow({ closed: true })
 
-    finishWebsiteSignIn(win, RETURN_TO)
+    returnToWebsite(win, RETURN_TO)
 
     expect(win.close).not.toHaveBeenCalled()
+    expect(win.setTimeout).not.toHaveBeenCalled()
     expect(win.location.replace).toHaveBeenCalledWith(RETURN_TO)
   })
 
   it('goes to the return page when this tab has no opener', () => {
     const win = fakeWindow(null)
 
-    finishWebsiteSignIn(win, RETURN_TO)
-
-    expect(win.close).not.toHaveBeenCalled()
-    expect(win.location.replace).toHaveBeenCalledWith(RETURN_TO)
-  })
-
-  it('stays on the page when the browser refuses to close the tab', () => {
-    const win = fakeWindow({ closed: false })
-
-    finishWebsiteSignIn(win, RETURN_TO)
-
-    expect(win.setTimeout).not.toHaveBeenCalled()
-    expect(win.location.replace).not.toHaveBeenCalled()
-  })
-})
-
-describe('leaveForWebsite', () => {
-  it('navigates a tab that refuses to close', () => {
-    const win = fakeWindow({ closed: false })
-
-    leaveForWebsite(win, RETURN_TO)
-
-    expect(win.close).toHaveBeenCalledOnce()
-    expect(win.location.replace).not.toHaveBeenCalled()
-
-    const [navigate, delay] = win.setTimeout.mock.calls[0]
-    expect(delay).toBe(CLOSE_GRACE_MS)
-
-    navigate()
-    expect(win.location.replace).toHaveBeenCalledWith(RETURN_TO)
-  })
-
-  it('goes straight to the return page without an opener', () => {
-    const win = fakeWindow(null)
-
-    leaveForWebsite(win, RETURN_TO)
+    returnToWebsite(win, RETURN_TO)
 
     expect(win.close).not.toHaveBeenCalled()
     expect(win.setTimeout).not.toHaveBeenCalled()
+    expect(win.location.replace).toHaveBeenCalledWith(RETURN_TO)
+  })
+
+  it('goes to the return page when the browser refuses to close the tab', () => {
+    const win = fakeWindow({ closed: false })
+
+    returnToWebsite(win, RETURN_TO)
+
+    expect(win.setTimeout).toHaveBeenCalledWith(
+      expect.any(Function),
+      CLOSE_GRACE_MS,
+    )
+    win.setTimeout.mock.calls[0][0]()
     expect(win.location.replace).toHaveBeenCalledWith(RETURN_TO)
   })
 })

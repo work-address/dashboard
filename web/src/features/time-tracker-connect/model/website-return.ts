@@ -40,28 +40,10 @@ const hasLiveOpener = ({ opener }: ExitWindow): boolean =>
   Boolean(opener && !opener.closed)
 
 /**
- * Hands the user back once they are signed in. The tab closes when its opener
- * is still there. Otherwise it goes to the return page, where the website
- * resumes the pairing it saved. A browser may refuse to close the tab, which
- * leaves the "You're signed in" screen and its way back on show.
+ * Close the confirmation tab when the original tab is still open. If the
+ * browser keeps this tab open, go back to the page that started the request.
  */
-export const finishWebsiteSignIn = (
-  win: ExitWindow,
-  returnTo: string,
-): void => {
-  if (hasLiveOpener(win)) {
-    win.close()
-    return
-  }
-
-  win.location.replace(returnTo)
-}
-
-/**
- * Leaves because the user asked to. Unlike finishing, there is no screen left
- * to fall back on, so a tab that refuses to close is navigated instead.
- */
-export const leaveForWebsite = (win: ExitWindow, returnTo: string): void => {
+export const returnToWebsite = (win: ExitWindow, returnTo: string): void => {
   if (!hasLiveOpener(win)) {
     win.location.replace(returnTo)
     return
