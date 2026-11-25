@@ -32,7 +32,7 @@ const row = { id: 'p1', name: 'Creds' } as never
 
 describe('deleting a project', () => {
   beforeEach(() => {
-    remove.mockReset().mockResolvedValue()
+    remove.mockReset().mockResolvedValue(undefined)
     confirm.mockReset()
     toast.mockReset()
   })
