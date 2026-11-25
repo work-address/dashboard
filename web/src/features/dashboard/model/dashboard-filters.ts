@@ -4,6 +4,7 @@ import i18n from 'i18next'
 
 import { latestDesktopSession } from './desktop-session'
 
+import { projectAccess, projectsAccess } from '@/entities/access'
 import { $user } from '@/entities/profile'
 import { $projects, type ProjectWithStats } from '@/entities/projects'
 import {
@@ -216,7 +217,7 @@ export const $dashboardPeople = combine(
     const people = new Map<string, string>()
 
     for (const project of projects) {
-      if (project.role !== 'owner') {
+      if (!projectAccess(project).everyone) {
         continue
       }
 
@@ -242,15 +243,13 @@ export const $dashboardPeople = combine(
  * never tracks, runs agents or takes screenshots, so the widgets about those
  * are left out rather than shown empty for good.
  */
-export const $dashboardCanTrack = $projects.map((projects) =>
-  projects.some(
-    (project) => project.role === 'owner' || project.role === 'worker',
-  ),
+export const $dashboardCanTrack = $projects.map(
+  (projects) => projectsAccess(projects).works,
 )
 
 /** Whether the reader owns a project: the team list is theirs alone. */
-export const $isDashboardOwner = $projects.map((projects) =>
-  projects.some((project) => project.role === 'owner'),
+export const $isDashboardOwner = $projects.map(
+  (projects) => projectsAccess(projects).owns,
 )
 
 const filtersApplied = merge([

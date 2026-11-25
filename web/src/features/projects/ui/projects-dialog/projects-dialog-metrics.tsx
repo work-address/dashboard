@@ -6,6 +6,7 @@ import { getProjectStatusTranslationKey } from '../../model'
 
 import type { ProjectWithStats } from '@/entities/projects'
 
+import { projectAccess } from '@/entities/access'
 import {
   formatCount,
   formatCurrency,
@@ -29,7 +30,7 @@ export const ProjectsDialogMetrics = ({ data }: ProjectsDialogMetricsProps) => {
   const { t } = useTranslation()
   const isDesktop = useBreakpoint('isDesktop')
   const statusKey = getProjectStatusTranslationKey(data.state)
-  const seesDetail = data.role !== 'viewer'
+  const seesDetail = projectAccess(data).amounts
 
   return (
     <Grid

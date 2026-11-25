@@ -105,8 +105,6 @@ export {
 } from './types'
 
 export {
-  canInvoiceProject,
-  canManageProject,
   normalizeProcessName,
   OTHER_PROCESS_NAME,
   projectSeriesNames,

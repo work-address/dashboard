@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { NavLink, useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
 
+import { invoiceAccess } from '@/entities/access'
 import { $user } from '@/entities/profile'
 import {
   $hasMoreInvoices,
@@ -22,7 +23,6 @@ import {
   InvoiceScopeFilters,
   InvoicePaymentActions,
   InvoicesTable,
-  canSettleInvoice,
   fetchInvoiceList,
   retryInvoiceList,
   retryInvoiceSummary,
@@ -380,7 +380,7 @@ const InvoiceCards = ({
       {showSkeleton ? [0, 1, 2].map((row) => <SkeletonRow key={row} />) : null}
       {rows.map((invoice) => {
         const isPaid = invoice.state === 'PAID'
-        const canSettle = canSettleInvoice(invoice, user)
+        const canSettle = invoiceAccess(invoice, user).settle
         const rateHour = invoiceRateHour(invoice)
         const issuer =
           invoice.user?.name || shortenAddress(invoice.user?.address ?? '')

@@ -8,6 +8,7 @@ import { getProjectStatusTranslationKey } from '../../model'
 import type { ProjectWithStats } from '@/entities/projects'
 import type { ReactNode } from 'react'
 
+import { projectAccess } from '@/entities/access'
 import {
   formatCompactDurationFromMinutes,
   formatCurrency,
@@ -38,7 +39,7 @@ export const ProjectsOverviewRow = ({
   // dialog's overlay already moves the pointer off the row, so the hold lifts
   // only when the pointer comes back to it.
   const [popupSuppressed, setPopupSuppressed] = useState(false)
-  const viewer = project.role === 'viewer'
+  const { amounts } = projectAccess(project)
   const statusKey = getProjectStatusTranslationKey(project.state)
   const status = statusKey
     ? t(statusKey)
@@ -46,7 +47,7 @@ export const ProjectsOverviewRow = ({
       ? t('dashboard.page.tabs.inactive')
       : project.state
   const rate =
-    !viewer && project.rateHour !== undefined
+    amounts && project.rateHour !== undefined
       ? t('invoices.item.perHour', { rate: formatCurrency(project.rateHour) })
       : undefined
   const active =
@@ -77,7 +78,7 @@ export const ProjectsOverviewRow = ({
     <Root
       role="row"
       data-detail={showDetail || undefined}
-      data-viewer={viewer || undefined}
+      data-viewer={!amounts || undefined}
     >
       <Cell>
         {projectPopup && !isMobile ? (
@@ -115,16 +116,16 @@ export const ProjectsOverviewRow = ({
       </Cell>
       {showDetail && (
         <>
-          <Cell data-unavailable={viewer || undefined}>
-            {!viewer && (
+          <Cell data-unavailable={!amounts || undefined}>
+            {amounts && (
               <>
                 <Caption>{t('dashboard.summary.active.label')}</Caption>
                 <Metric>{active}</Metric>
               </>
             )}
           </Cell>
-          <Cell data-unavailable={viewer || undefined}>
-            {!viewer && (
+          <Cell data-unavailable={!amounts || undefined}>
+            {amounts && (
               <>
                 <Caption>{t('dashboard.summary.earned.label')}</Caption>
                 <Metric>

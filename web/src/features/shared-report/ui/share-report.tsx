@@ -21,6 +21,7 @@ import {
 
 import type { StatisticsQuery } from '@/entities/statistics'
 
+import { projectsAccess } from '@/entities/access'
 import { $projects } from '@/entities/projects'
 import {
   Button,
@@ -94,7 +95,7 @@ export const ShareReport = ({ query, className }: Props) => {
   // A viewer never sees money, so one who views everything they have is not
   // offered it. Anyone else may ask; the server decides for the projects the
   // report ends up with.
-  const offersAmounts = projects.some((project) => project.role !== 'viewer')
+  const offersAmounts = projectsAccess(projects).amounts
   const days = opened ? getReportDays(opened) : null
   const period = days
     ? new Intl.DateTimeFormat(language, {

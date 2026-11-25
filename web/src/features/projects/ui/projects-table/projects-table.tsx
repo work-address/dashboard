@@ -39,6 +39,7 @@ import {
 } from './projects-table-context'
 import { ProjectsDesktopCell } from './projects-table-desktop-cell'
 
+import { projectAccess } from '@/entities/access'
 import {
   $filteredProjects,
   $projectsLoading,
@@ -161,7 +162,7 @@ export const ProjectsTable = ({
       rows.map((project) => {
         const period = periodTotals[project.id ?? '']
         // A viewer has no activity or money figures, in any period.
-        const seesDetail = project.role !== 'viewer'
+        const seesDetail = projectAccess(project).amounts
 
         return {
           ...project,
